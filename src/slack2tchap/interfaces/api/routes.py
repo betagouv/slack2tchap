@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from slack2tchap import __version__
 from slack2tchap.application.dtos import (
+    CreateUserCommand,
     CreateWebhookCommand,
     RegisterMatrixAccountCommand,
     RequestDeviceVerificationCommand,
     SendPublicWebhookCommand,
 )
 from slack2tchap.application.use_cases import (
+    CreateUserUseCase,
     CreateWebhookUseCase,
     DeleteMatrixAccountUseCase,
     DeleteWebhookUseCase,
@@ -25,12 +27,15 @@ from slack2tchap.domain.exceptions import (
     DomainError,
     InvalidRoomIdError,
     MatrixAccountNotFoundError,
+    UserAlreadyExistsError,
     VerificationTimeoutError,
     WebhookNotFoundError,
 )
 from slack2tchap.domain.models import User
 from slack2tchap.infrastructure.parsers.slack_parser import SlackPayloadParser
 from slack2tchap.interfaces.api.dependencies import (
+    get_admin_user,
+    get_create_user_use_case,
     get_create_webhook_use_case,
     get_current_user,
     get_delete_matrix_account_use_case,
@@ -47,6 +52,8 @@ from slack2tchap.interfaces.api.schemas import (
     MatrixAccountCreateRequest,
     MatrixAccountResponse,
     SlackWebhookPayload,
+    UserCreateRequest,
+    UserCreateResponse,
     VerificationResponse,
     WebhookCreateRequest,
     WebhookDetailResponse,
@@ -150,6 +157,47 @@ async def handle_public_webhook_by_id(
         is_encrypted=result.is_encrypted,
         event_id=result.event_id,
         error=result.error,
+    )
+
+
+# ============================================================================
+# ADMIN ENDPOINTS: USER MANAGEMENT (ADMIN-ONLY)
+# ============================================================================
+
+
+@router.post(
+    "/api/v1/admin/users",
+    response_model=UserCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user account (admin-only)",
+    tags=["Admin Users"],
+)
+async def create_user(
+    request: UserCreateRequest,
+    admin_user: Annotated[User, Depends(get_admin_user)],
+    use_case: Annotated[CreateUserUseCase, Depends(get_create_user_use_case)],
+) -> UserCreateResponse:
+    """Create a new user with a generated API key. Admin privileges required.
+
+    The raw API key is returned ONLY in this response and cannot be retrieved later.
+    """
+    logger.info("Admin %s creating new user with email=%s", admin_user.email, request.email)
+    try:
+        dto = await use_case.execute(CreateUserCommand(email=request.email))
+    except UserAlreadyExistsError as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=err.message,
+        ) from err
+
+    return UserCreateResponse(
+        id=dto.id,
+        email=dto.email,
+        api_key_prefix=dto.api_key_prefix,
+        raw_api_key=dto.raw_api_key,
+        is_admin=dto.is_admin,
+        is_active=dto.is_active,
+        created_at=dto.created_at,
     )
 
 

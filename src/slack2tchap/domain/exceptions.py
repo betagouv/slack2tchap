@@ -59,3 +59,7 @@ class AuthenticationError(MatrixClientError):
 
 class VerificationTimeoutError(MatrixClientError):
     """Raised when waiting for interactive SAS device verification times out."""
+
+
+class AccessDeniedError(DomainError):
+    """Raised when a user attempts an action they are not authorized to perform."""

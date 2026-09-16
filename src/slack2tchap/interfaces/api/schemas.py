@@ -161,3 +161,28 @@ class VerificationResponse(BaseModel):
     emoji_string: str = Field(
         ..., description="Joined space-separated string of the emojis for quick display"
     )
+
+
+class UserCreateRequest(BaseModel):
+    """Request payload to create a new user account (admin-only)."""
+
+    email: str = Field(
+        ...,
+        description="Email address of the new user",
+        examples=["operator@beta.gouv.fr"],
+    )
+
+
+class UserCreateResponse(BaseModel):
+    """Response returned once after user creation, including the one-time raw API key."""
+
+    id: UUID = Field(..., description="Unique user ID")
+    email: str = Field(..., description="Email address")
+    api_key_prefix: str = Field(..., description="Non-sensitive prefix of the API key for logs")
+    raw_api_key: str = Field(
+        ...,
+        description="The generated API key. This is shown ONLY ONCE and cannot be retrieved later.",
+    )
+    is_admin: bool = Field(..., description="Whether the user has admin privileges")
+    is_active: bool = Field(..., description="Whether the user account is active")
+    created_at: str = Field(..., description="Creation ISO timestamp")

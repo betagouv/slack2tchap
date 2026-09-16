@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from slack2tchap.application.use_cases import (
     AuthenticateApiKeyUseCase,
+    CreateUserUseCase,
     CreateWebhookUseCase,
     DeleteMatrixAccountUseCase,
     DeleteWebhookUseCase,
@@ -116,6 +117,24 @@ async def get_current_user(
             detail=err.message,
             headers={"WWW-Authenticate": "Bearer"},
         ) from err
+
+
+async def get_admin_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Ensure authenticated user has admin privileges, raising 403 otherwise."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required.",
+        )
+    return current_user
+
+
+def get_create_user_use_case(
+    user_repo: Annotated[UserRepositoryPort, Depends(get_user_repository)],
+) -> CreateUserUseCase:
+    return CreateUserUseCase(user_repo=user_repo)
 
 
 def get_register_matrix_account_use_case(

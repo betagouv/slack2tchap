@@ -3,10 +3,12 @@
 import hashlib
 import logging
 import re
+import secrets
 from uuid import UUID
 
 from slack2tchap.application.dtos import (
     AlertResultDTO,
+    CreateUserCommand,
     CreateWebhookCommand,
     DeviceVerificationDTO,
     MatrixAccountDTO,
@@ -14,6 +16,7 @@ from slack2tchap.application.dtos import (
     RequestDeviceVerificationCommand,
     SendAlertCommand,
     SendPublicWebhookCommand,
+    UserCreatedDTO,
     WebhookDTO,
 )
 from slack2tchap.domain.exceptions import (
@@ -22,6 +25,7 @@ from slack2tchap.domain.exceptions import (
     InvalidRoomIdError,
     MatrixAccountNotFoundError,
     MatrixClientError,
+    UserAlreadyExistsError,
     WebhookNotFoundError,
 )
 from slack2tchap.domain.models import (
@@ -294,6 +298,46 @@ class AuthenticateApiKeyUseCase:
             raise InvalidApiKeyError("Invalid API key or inactive account.")
 
         return user
+
+
+class CreateUserUseCase:
+    """Use case to create a new user account with a generated API key (admin-only)."""
+
+    API_KEY_PREFIX = "s2t_live_"
+
+    def __init__(self, user_repo: UserRepositoryPort) -> None:
+        self._user_repo = user_repo
+
+    async def execute(self, command: CreateUserCommand) -> UserCreatedDTO:
+        normalized_email = command.email.strip().lower()
+
+        existing = await self._user_repo.get_by_email(normalized_email)
+        if existing is not None:
+            raise UserAlreadyExistsError(f"A user with email '{normalized_email}' already exists.")
+
+        raw_key = f"{self.API_KEY_PREFIX}{secrets.token_urlsafe(32)}"
+        key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+        key_prefix = raw_key[:16] + "..."
+
+        user = User(
+            email=normalized_email,
+            api_key_hash=key_hash,
+            api_key_prefix=key_prefix,
+            is_admin=False,
+            is_active=True,
+        )
+
+        saved = await self._user_repo.save(user)
+
+        return UserCreatedDTO(
+            id=saved.id,
+            email=saved.email,
+            api_key_prefix=saved.api_key_prefix,
+            raw_api_key=raw_key,
+            is_admin=saved.is_admin,
+            is_active=saved.is_active,
+            created_at=saved.created_at.isoformat(),
+        )
 
 
 class SendAlertUseCase:

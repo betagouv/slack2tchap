@@ -112,3 +112,23 @@ class DeviceVerificationDTO:
     transaction_id: str
     target_device_id: str | None
     emojis: list[tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class CreateUserCommand:
+    """Command payload to create a new user account (admin-only)."""
+
+    email: str
+
+
+@dataclass(frozen=True)
+class UserCreatedDTO:
+    """DTO returned once after user creation, including the one-time raw API key."""
+
+    id: UUID
+    email: str
+    api_key_prefix: str
+    raw_api_key: str
+    is_admin: bool
+    is_active: bool
+    created_at: str

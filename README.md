@@ -107,15 +107,65 @@ uv run uvicorn slack2tchap.main:app --reload --port 8000
 
 ---
 
-## ⚙️ Configuration Multi-Bots & Webhooks
+## ⚙️ Gestion des Utilisateurs, Bots & Webhooks
 
-### 1. Enregistrer un bot Matrix (Tchap)
+### Modèle de sécurité
 
-Authentifiez-vous avec la clé API admin (`X-API-Key` ou `Authorization: Bearer <ADMIN_API_KEY>`) :
+Le service utilise un système d'authentification par **clé API** (`X-API-Key` ou `Authorization: Bearer <clé>`) avec deux niveaux de privilèges :
+
+| Rôle | Peut créer des utilisateurs | Peut gérer ses bots & webhooks | Accès aux ressources d'autres utilisateurs |
+|---|---|---|---|
+| **Admin** | ✅ | ✅ | ❌ (isolement strict) |
+| **Utilisateur standard** | ❌ (403 Forbidden) | ✅ | ❌ (isolement strict) |
+
+> **Isolement strict** : chaque utilisateur ne peut voir, modifier ou supprimer **que** ses propres bots Matrix et webhooks. Un utilisateur ne peut pas non plus créer un webhook référençant le bot d'un autre utilisateur.
+
+### 0. Administrateur initial (seeding automatique)
+
+Au **premier démarrage**, l'application crée automatiquement un compte administrateur à partir des variables d'environnement `ADMIN_EMAIL` et `ADMIN_API_KEY` :
+
+```bash
+# Générer les clés de sécurité
+uv run python scripts/generate_api_key.py
+```
+
+Ce script affiche les valeurs à insérer dans `.env` (dont `ADMIN_API_KEY` et `SECRET_ENCRYPTION_KEY`). Le seeding est **idempotent** : si l'admin existe déjà, il est ignoré.
+
+### 1. Créer un utilisateur (admin uniquement)
+
+Seul un administrateur peut créer de nouveaux comptes utilisateurs. La clé API générée est retournée **une seule fois** dans la réponse et ne peut pas être récupérée ultérieurement :
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/users \
+  -H "X-API-Key: <ADMIN_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "operator@beta.gouv.fr"}'
+```
+
+Réponse :
+```json
+{
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "email": "operator@beta.gouv.fr",
+  "api_key_prefix": "s2t_live_aBcDeF...",
+  "raw_api_key": "s2t_live_aBcDeFgHiJkLmNoPqRsTuVwXyZ...",
+  "is_admin": false,
+  "is_active": true,
+  "created_at": "2026-09-16T10:00:00+00:00"
+}
+```
+
+> ⚠️ **Conservez précieusement la valeur `raw_api_key`** — elle ne sera plus jamais affichée. Si la clé est perdue, il faudra créer un nouvel utilisateur.
+
+L'utilisateur créé peut ensuite utiliser sa clé API pour gérer **ses propres** bots et webhooks.
+
+### 2. Enregistrer un bot Matrix (Tchap)
+
+Chaque utilisateur authentifié peut enregistrer ses propres comptes bots Matrix :
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/matrix-accounts \
-  -H "X-API-Key: s2t_live_secret_admin_key..." \
+  -H "X-API-Key: <VOTRE_CLE_API>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Bot Alertmanager DSI",
@@ -126,11 +176,13 @@ curl -X POST http://localhost:8000/api/v1/admin/matrix-accounts \
 
 Le mot de passe / token est chiffré en AES-256-GCM avant stockage en base. Le client Matrix initialise immédiatement sa session E2EE et sauvegarde l'archive cryptographique dans PostgreSQL.
 
-### 2. Créer une URL de Webhook pour un salon
+### 3. Créer une URL de Webhook pour un salon
+
+Le webhook **doit référencer un bot appartenant à l'utilisateur authentifié** :
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/webhooks \
-  -H "X-API-Key: s2t_live_secret_admin_key..." \
+  -H "X-API-Key: <VOTRE_CLE_API>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Alertes Production",
@@ -152,7 +204,7 @@ Réponse :
 }
 ```
 
-### 3. Vérifier la session du bot (Vérification E2EE / Emojis)
+### 4. Vérifier la session du bot (Vérification E2EE / Emojis)
 
 Par défaut, lors de sa première connexion, la session du bot apparaît non vérifiée dans Tchap (avec un symbole d'avertissement à côté de ses messages). Pour certifier la session cryptographique de votre bot avec un **bouclier vert vérifié** dans Tchap :
 
@@ -204,8 +256,29 @@ Par défaut, lors de sa première connexion, la session du bot apparaît non vé
    - Le bot transmet automatiquement l'acquittement de fin (`m.key.verification.done`).
    - La session est validée avec succès : **le bouclier vert apparaît** et l'archive de clés SQLite mise à jour est immédiatement persistée dans PostgreSQL.
 
+### 5. Lister et supprimer ses ressources
 
-### 4. Envoyer une alerte (Public - sans clé API requise)
+Chaque utilisateur ne voit que ses propres ressources :
+
+```bash
+# Lister ses bots
+curl http://localhost:8000/api/v1/admin/matrix-accounts \
+  -H "X-API-Key: <VOTRE_CLE_API>"
+
+# Lister ses webhooks
+curl http://localhost:8000/api/v1/admin/webhooks \
+  -H "X-API-Key: <VOTRE_CLE_API>"
+
+# Supprimer un bot
+curl -X DELETE http://localhost:8000/api/v1/admin/matrix-accounts/<bot_uuid> \
+  -H "X-API-Key: <VOTRE_CLE_API>"
+
+# Supprimer un webhook
+curl -X DELETE http://localhost:8000/api/v1/admin/webhooks/<webhook_uuid> \
+  -H "X-API-Key: <VOTRE_CLE_API>"
+```
+
+### 6. Envoyer une alerte (Public - sans clé API requise)
 
 
 Configurez simplement l'URL reçue (`/webhook/slack/{uuid}` ou `/slack/{uuid}`) dans Alertmanager, Grafana, GitLab CI, etc. :
@@ -229,6 +302,22 @@ curl -X POST http://localhost:8000/webhook/slack/e4b52bb2-6b99-4d69-a1b6-79cf02c
 ```
 
 Le service identifie le salon et le bot associé depuis la base de données, chiffre le message si le salon Tchap est chiffré, et l'envoie instantanément.
+
+### Récapitulatif des routes API
+
+| Méthode | Route | Auth | Rôle requis | Description |
+|---|---|---|---|---|
+| `GET` | `/health` | ❌ | — | Healthcheck |
+| `POST` | `/webhook/slack/{uuid}` | ❌ | — | Ingestion webhook public |
+| `POST` | `/slack/{uuid}` | ❌ | — | Alias court webhook |
+| `POST` | `/api/v1/admin/users` | ✅ | **Admin** | Créer un utilisateur |
+| `POST` | `/api/v1/admin/matrix-accounts` | ✅ | Utilisateur | Enregistrer un bot |
+| `GET` | `/api/v1/admin/matrix-accounts` | ✅ | Utilisateur | Lister ses bots |
+| `DELETE` | `/api/v1/admin/matrix-accounts/{id}` | ✅ | Utilisateur | Supprimer son bot |
+| `POST` | `/api/v1/admin/webhooks` | ✅ | Utilisateur | Créer un webhook |
+| `GET` | `/api/v1/admin/webhooks` | ✅ | Utilisateur | Lister ses webhooks |
+| `DELETE` | `/api/v1/admin/webhooks/{id}` | ✅ | Utilisateur | Supprimer son webhook |
+| `POST` | `/verify/{bot_uuid}` | ✅ | Utilisateur | Vérification SAS E2EE |
 
 ---
 
