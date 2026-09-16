@@ -11,6 +11,7 @@ from slack2tchap.application.use_cases import (
     CreateUserUseCase,
     CreateWebhookUseCase,
     DeleteMatrixAccountUseCase,
+    DeleteUserUseCase,
     DeleteWebhookUseCase,
     ListMatrixAccountsUseCase,
     ListWebhooksUseCase,
@@ -137,6 +138,21 @@ def get_create_user_use_case(
     return CreateUserUseCase(user_repo=user_repo)
 
 
+def get_delete_user_use_case(
+    user_repo: Annotated[UserRepositoryPort, Depends(get_user_repository)],
+    account_repo: Annotated[MatrixAccountRepositoryPort, Depends(get_matrix_account_repository)],
+    webhook_repo: Annotated[WebhookRepositoryPort, Depends(get_webhook_repository)],
+    request: Request,
+) -> DeleteUserUseCase:
+    client_manager = getattr(request.app.state, "matrix_client_manager", None)
+    return DeleteUserUseCase(
+        user_repo=user_repo,
+        account_repo=account_repo,
+        webhook_repo=webhook_repo,
+        client_manager=client_manager,
+    )
+
+
 def get_register_matrix_account_use_case(
     account_repo: Annotated[MatrixAccountRepositoryPort, Depends(get_matrix_account_repository)],
     cipher: Annotated[SecretCipherPort, Depends(get_cipher)],
@@ -152,8 +168,15 @@ def get_list_matrix_accounts_use_case(
 
 def get_delete_matrix_account_use_case(
     account_repo: Annotated[MatrixAccountRepositoryPort, Depends(get_matrix_account_repository)],
+    webhook_repo: Annotated[WebhookRepositoryPort, Depends(get_webhook_repository)],
+    request: Request,
 ) -> DeleteMatrixAccountUseCase:
-    return DeleteMatrixAccountUseCase(account_repo=account_repo)
+    client_manager = getattr(request.app.state, "matrix_client_manager", None)
+    return DeleteMatrixAccountUseCase(
+        account_repo=account_repo,
+        webhook_repo=webhook_repo,
+        client_manager=client_manager,
+    )
 
 
 def get_process_public_webhook_use_case(

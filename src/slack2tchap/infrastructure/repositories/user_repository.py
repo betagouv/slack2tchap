@@ -70,3 +70,11 @@ class SqlAlchemyUserRepository(UserRepositoryPort):
 
         await self._session.flush()
         return self._to_domain(model)
+
+    async def delete(self, user_id: UUID) -> bool:
+        model = await self._session.get(UserModel, user_id)
+        if model is None:
+            return False
+        await self._session.delete(model)
+        await self._session.flush()
+        return True

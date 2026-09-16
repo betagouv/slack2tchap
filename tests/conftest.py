@@ -110,6 +110,12 @@ class FakeUserRepository(UserRepositoryPort):
         self.users_by_id[user.id] = user
         return user
 
+    async def delete(self, user_id: UUID) -> bool:
+        if user_id in self.users_by_id:
+            del self.users_by_id[user_id]
+            return True
+        return False
+
 
 class FakeMatrixAccountRepository(MatrixAccountRepositoryPort):
     """In-memory repository for MatrixAccount entities and crypto stores."""
@@ -159,6 +165,9 @@ class FakeWebhookRepository(WebhookRepositoryPort):
     async def list_by_user_id(self, user_id: UUID) -> list[WebhookEndpoint]:
         return [w for w in self.webhooks_by_id.values() if w.user_id == user_id]
 
+    async def list_by_matrix_account_id(self, matrix_account_id: UUID) -> list[WebhookEndpoint]:
+        return [w for w in self.webhooks_by_id.values() if w.matrix_account_id == matrix_account_id]
+
     async def save(self, webhook: WebhookEndpoint) -> WebhookEndpoint:
         self.webhooks_by_id[webhook.id] = webhook
         return webhook
@@ -175,12 +184,16 @@ class FakeMatrixClientManager:
 
     def __init__(self, messenger: FakeMatrixMessenger) -> None:
         self.messenger = messenger
+        self.removed_clients: list[UUID] = []
 
     async def get_or_create_client(self, account_id: UUID) -> MatrixMessengerPort:
         return self.messenger
 
     async def get_client(self, account_id: UUID) -> MatrixMessengerPort:
         return self.messenger
+
+    async def remove_client(self, account_id: UUID) -> None:
+        self.removed_clients.append(account_id)
 
     async def start_all_clients(self) -> None:
         pass

@@ -44,6 +44,16 @@ class SqlAlchemyWebhookRepository(WebhookRepositoryPort):
         models = result.scalars().all()
         return [self._to_domain(m) for m in models]
 
+    async def list_by_matrix_account_id(self, matrix_account_id: UUID) -> list[WebhookEndpoint]:
+        stmt = (
+            select(WebhookModel)
+            .where(WebhookModel.matrix_account_id == matrix_account_id)
+            .order_by(WebhookModel.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        models = result.scalars().all()
+        return [self._to_domain(m) for m in models]
+
     async def save(self, webhook: WebhookEndpoint) -> WebhookEndpoint:
         model = await self._session.get(WebhookModel, webhook.id)
 

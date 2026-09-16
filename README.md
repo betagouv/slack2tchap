@@ -113,12 +113,15 @@ uv run uvicorn slack2tchap.main:app --reload --port 8000
 
 Le service utilise un système d'authentification par **clé API** (`X-API-Key` ou `Authorization: Bearer <clé>`) avec deux niveaux de privilèges :
 
-| Rôle | Peut créer des utilisateurs | Peut gérer ses bots & webhooks | Accès aux ressources d'autres utilisateurs |
+| Rôle | Peut créer / supprimer des utilisateurs | Peut gérer ses bots & webhooks | Suppression des ressources d'autres utilisateurs |
 |---|---|---|---|
-| **Admin** | ✅ | ✅ | ❌ (isolement strict) |
-| **Utilisateur standard** | ❌ (403 Forbidden) | ✅ | ❌ (isolement strict) |
+| **Admin** | ✅ | ✅ | ✅ (peut supprimer n'importe quel bot ou webhook) |
+| **Utilisateur standard** | ❌ (403 Forbidden) | ✅ | ❌ (404 Not Found - suppression limitée à ses propres ressources) |
 
-> **Isolement strict** : chaque utilisateur ne peut voir, modifier ou supprimer **que** ses propres bots Matrix et webhooks. Un utilisateur ne peut pas non plus créer un webhook référençant le bot d'un autre utilisateur.
+> **Règles de cascade et contrôle d'accès** :
+> - **Suppression d'un utilisateur** (Admin uniquement) : supprime automatiquement l'ensemble de ses comptes bots Matrix et tous les webhooks associés.
+> - **Suppression d'un bot Matrix** : supprime automatiquement tous les webhooks associés à ce bot. Un administrateur peut supprimer n'importe quel bot, tandis qu'un utilisateur standard ne peut supprimer que ses propres bots.
+> - **Suppression d'un webhook** : un administrateur peut supprimer n'importe quel webhook, tandis qu'un utilisateur standard ne peut supprimer que ses propres webhooks.
 
 ### 0. Administrateur initial (seeding automatique)
 
@@ -131,7 +134,9 @@ uv run python scripts/generate_api_key.py
 
 Ce script affiche les valeurs à insérer dans `.env` (dont `ADMIN_API_KEY` et `SECRET_ENCRYPTION_KEY`). Le seeding est **idempotent** : si l'admin existe déjà, il est ignoré.
 
-### 1. Créer un utilisateur (admin uniquement)
+### 1. Gérer les utilisateurs (admin uniquement)
+
+#### Créer un utilisateur
 
 Seul un administrateur peut créer de nouveaux comptes utilisateurs. La clé API générée est retournée **une seule fois** dans la réponse et ne peut pas être récupérée ultérieurement :
 
@@ -156,6 +161,15 @@ Réponse :
 ```
 
 > ⚠️ **Conservez précieusement la valeur `raw_api_key`** — elle ne sera plus jamais affichée. Si la clé est perdue, il faudra créer un nouvel utilisateur.
+
+#### Supprimer un utilisateur
+
+Seul un administrateur peut supprimer un compte utilisateur. La suppression de l'utilisateur supprime automatiquement en cascade tous ses bots Matrix, leurs sessions et l'ensemble des webhooks associés :
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/admin/users/<user_uuid> \
+  -H "X-API-Key: <ADMIN_API_KEY>"
+```
 
 L'utilisateur créé peut ensuite utiliser sa clé API pour gérer **ses propres** bots et webhooks.
 
@@ -256,9 +270,11 @@ Par défaut, lors de sa première connexion, la session du bot apparaît non vé
    - Le bot transmet automatiquement l'acquittement de fin (`m.key.verification.done`).
    - La session est validée avec succès : **le bouclier vert apparaît** et l'archive de clés SQLite mise à jour est immédiatement persistée dans PostgreSQL.
 
-### 5. Lister et supprimer ses ressources
+### 5. Lister et supprimer des ressources (bots et webhooks)
 
-Chaque utilisateur ne voit que ses propres ressources :
+- **Utilisateurs standard** : ne peuvent lister et supprimer **que** leurs propres ressources.
+- **Administrateurs** : peuvent supprimer n'importe quel bot ou webhook.
+- **Cascade bot -> webhooks** : la suppression d'un bot supprime **automatiquement** tous les webhooks qui lui sont associés.
 
 ```bash
 # Lister ses bots
@@ -269,7 +285,7 @@ curl http://localhost:8000/api/v1/admin/matrix-accounts \
 curl http://localhost:8000/api/v1/admin/webhooks \
   -H "X-API-Key: <VOTRE_CLE_API>"
 
-# Supprimer un bot
+# Supprimer un bot (supprime aussi les webhooks associés)
 curl -X DELETE http://localhost:8000/api/v1/admin/matrix-accounts/<bot_uuid> \
   -H "X-API-Key: <VOTRE_CLE_API>"
 
@@ -311,12 +327,13 @@ Le service identifie le salon et le bot associé depuis la base de données, chi
 | `POST` | `/webhook/slack/{uuid}` | ❌ | — | Ingestion webhook public |
 | `POST` | `/slack/{uuid}` | ❌ | — | Alias court webhook |
 | `POST` | `/api/v1/admin/users` | ✅ | **Admin** | Créer un utilisateur |
+| `DELETE` | `/api/v1/admin/users/{id}` | ✅ | **Admin** | Supprimer un utilisateur et ses ressources associées (bots et webhooks) |
 | `POST` | `/api/v1/admin/matrix-accounts` | ✅ | Utilisateur | Enregistrer un bot |
 | `GET` | `/api/v1/admin/matrix-accounts` | ✅ | Utilisateur | Lister ses bots |
-| `DELETE` | `/api/v1/admin/matrix-accounts/{id}` | ✅ | Utilisateur | Supprimer son bot |
+| `DELETE` | `/api/v1/admin/matrix-accounts/{id}` | ✅ | Utilisateur (ses bots) / **Admin** (tous) | Supprimer un bot et ses webhooks associés |
 | `POST` | `/api/v1/admin/webhooks` | ✅ | Utilisateur | Créer un webhook |
 | `GET` | `/api/v1/admin/webhooks` | ✅ | Utilisateur | Lister ses webhooks |
-| `DELETE` | `/api/v1/admin/webhooks/{id}` | ✅ | Utilisateur | Supprimer son webhook |
+| `DELETE` | `/api/v1/admin/webhooks/{id}` | ✅ | Utilisateur (ses webhooks) / **Admin** (tous) | Supprimer un webhook |
 | `POST` | `/verify/{bot_uuid}` | ✅ | Utilisateur | Vérification SAS E2EE |
 
 ---

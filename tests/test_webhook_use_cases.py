@@ -12,6 +12,9 @@ from slack2tchap.application.dtos import (
 from slack2tchap.application.use_cases import (
     AuthenticateApiKeyUseCase,
     CreateWebhookUseCase,
+    DeleteMatrixAccountUseCase,
+    DeleteUserUseCase,
+    DeleteWebhookUseCase,
     ListMatrixAccountsUseCase,
     ProcessPublicWebhookUseCase,
     RegisterMatrixAccountUseCase,
@@ -20,8 +23,16 @@ from slack2tchap.domain.exceptions import (
     DomainError,
     InvalidApiKeyError,
     MatrixAccountNotFoundError,
+    UserNotFoundError,
+    WebhookNotFoundError,
 )
-from slack2tchap.domain.models import AlertMessage, AlertSeverity, User
+from slack2tchap.domain.models import (
+    AlertMessage,
+    AlertSeverity,
+    MatrixAccount,
+    User,
+    WebhookEndpoint,
+)
 from slack2tchap.domain.ports import SecretCipherPort
 from slack2tchap.infrastructure.security.api_key import hash_api_key
 from tests.conftest import (
@@ -190,3 +201,133 @@ async def test_authenticate_api_key_use_case(fake_user_repository: FakeUserRepos
     # Bad key fails
     with pytest.raises(InvalidApiKeyError):
         await auth_uc.execute("s2t_live_invalid_key")
+
+
+@pytest.mark.asyncio
+async def test_delete_user_use_case_success(
+    fake_user_repository: FakeUserRepository,
+    fake_matrix_account_repository: FakeMatrixAccountRepository,
+    fake_webhook_repository: FakeWebhookRepository,
+    fake_matrix_messenger: FakeMatrixMessenger,
+) -> None:
+    user = User(
+        email="test_del@tchap.gouv.fr",
+        api_key_hash="hash_123",
+        api_key_prefix="prefix_123",
+    )
+    await fake_user_repository.save(user)
+
+    bot = MatrixAccount(
+        name="Bot",
+        matrix_user_id="@bot:agent.tchap.gouv.fr",
+        user_id=user.id,
+    )
+    await fake_matrix_account_repository.save(bot)
+
+    wh = WebhookEndpoint(
+        name="WH",
+        matrix_room_id="!r:agent.tchap.gouv.fr",
+        matrix_account_id=bot.id,
+        user_id=user.id,
+    )
+    await fake_webhook_repository.save(wh)
+
+    client_mgr = FakeMatrixClientManager(fake_matrix_messenger)
+    use_case = DeleteUserUseCase(
+        user_repo=fake_user_repository,
+        account_repo=fake_matrix_account_repository,
+        webhook_repo=fake_webhook_repository,
+        client_manager=client_mgr,
+    )
+
+    result = await use_case.execute(user.id)
+    assert result is True
+    assert await fake_user_repository.get_by_id(user.id) is None
+    assert await fake_matrix_account_repository.get_by_id(bot.id) is None
+    assert await fake_webhook_repository.get_by_id(wh.id) is None
+    assert bot.id in client_mgr.removed_clients
+
+
+@pytest.mark.asyncio
+async def test_delete_user_use_case_not_found(
+    fake_user_repository: FakeUserRepository,
+    fake_matrix_account_repository: FakeMatrixAccountRepository,
+    fake_webhook_repository: FakeWebhookRepository,
+) -> None:
+    use_case = DeleteUserUseCase(
+        user_repo=fake_user_repository,
+        account_repo=fake_matrix_account_repository,
+        webhook_repo=fake_webhook_repository,
+    )
+    with pytest.raises(UserNotFoundError):
+        await use_case.execute(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_delete_matrix_account_use_case(
+    fake_matrix_account_repository: FakeMatrixAccountRepository,
+    fake_webhook_repository: FakeWebhookRepository,
+    fake_matrix_messenger: FakeMatrixMessenger,
+) -> None:
+    owner_id = uuid4()
+    other_user_id = uuid4()
+    bot = MatrixAccount(
+        name="Bot",
+        matrix_user_id="@bot:agent.tchap.gouv.fr",
+        user_id=owner_id,
+    )
+    await fake_matrix_account_repository.save(bot)
+
+    wh = WebhookEndpoint(
+        name="Hook",
+        matrix_room_id="!room:agent.tchap.gouv.fr",
+        matrix_account_id=bot.id,
+        user_id=owner_id,
+    )
+    await fake_webhook_repository.save(wh)
+
+    client_mgr = FakeMatrixClientManager(fake_matrix_messenger)
+    use_case = DeleteMatrixAccountUseCase(
+        account_repo=fake_matrix_account_repository,
+        webhook_repo=fake_webhook_repository,
+        client_manager=client_mgr,
+    )
+
+    # 1. Other non-admin user cannot delete
+    with pytest.raises(MatrixAccountNotFoundError):
+        await use_case.execute(bot.id, other_user_id, is_admin=False)
+
+    # 2. Admin CAN delete other user's bot
+    admin_id = uuid4()
+    del_res = await use_case.execute(bot.id, admin_id, is_admin=True)
+    assert del_res is True
+    assert await fake_matrix_account_repository.get_by_id(bot.id) is None
+    # Associated webhook was cascaded
+    assert await fake_webhook_repository.get_by_id(wh.id) is None
+    assert bot.id in client_mgr.removed_clients
+
+
+@pytest.mark.asyncio
+async def test_delete_webhook_use_case(
+    fake_webhook_repository: FakeWebhookRepository,
+) -> None:
+    owner_id = uuid4()
+    other_user_id = uuid4()
+    wh = WebhookEndpoint(
+        name="Hook",
+        matrix_room_id="!room:agent.tchap.gouv.fr",
+        matrix_account_id=uuid4(),
+        user_id=owner_id,
+    )
+    await fake_webhook_repository.save(wh)
+
+    use_case = DeleteWebhookUseCase(fake_webhook_repository)
+
+    # 1. Other non-admin user cannot delete
+    with pytest.raises(WebhookNotFoundError):
+        await use_case.execute(wh.id, other_user_id, is_admin=False)
+
+    # 2. Admin CAN delete other user's webhook
+    del_res = await use_case.execute(wh.id, uuid4(), is_admin=True)
+    assert del_res is True
+    assert await fake_webhook_repository.get_by_id(wh.id) is None

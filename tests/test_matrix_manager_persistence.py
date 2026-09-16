@@ -111,3 +111,32 @@ async def test_persist_if_modified_only_saves_on_actual_change(
         assert updated_acc.crypto_store_blob != initial_blob
 
         await manager.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_remove_client(
+    fake_matrix_account_repository: FakeMatrixAccountRepository,
+) -> None:
+    with tempfile.TemporaryDirectory() as base_temp:
+        from unittest.mock import AsyncMock
+
+        from slack2tchap.infrastructure.security.cipher import AesGcmSecretCipher
+
+        cipher = AesGcmSecretCipher("32_bytes_super_secret_test_key_for_cipher!")
+        manager = MatrixClientManager(
+            cipher=cipher,
+            homeserver="https://matrix.agent.tchap.gouv.fr",
+            account_repo=fake_matrix_account_repository,
+            base_temp_dir=Path(base_temp),
+        )
+
+        account_id = uuid4()
+        fake_client = AsyncMock()
+        manager._clients[account_id] = fake_client  # type: ignore[assignment]
+        manager._store_fingerprints[account_id] = (("store.db", 1, 1),)
+
+        await manager.remove_client(account_id)
+
+        assert account_id not in manager._clients
+        assert account_id not in manager._store_fingerprints
+        fake_client.close.assert_awaited_once()

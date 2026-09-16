@@ -50,6 +50,10 @@ class MatrixClientManagerPort(Protocol):
         """Retrieve active Matrix client."""
         ...
 
+    async def remove_client(self, account_id: UUID) -> None:
+        """Close and remove an active Matrix client session."""
+        ...
+
 
 class UserRepositoryPort(Protocol):
     """Port interface for User persistence operations."""
@@ -68,6 +72,10 @@ class UserRepositoryPort(Protocol):
 
     async def save(self, user: User) -> User:
         """Create or update a user entity."""
+        ...
+
+    async def delete(self, user_id: UUID) -> bool:
+        """Delete a user by ID."""
         ...
 
 
@@ -112,6 +120,10 @@ class WebhookRepositoryPort(Protocol):
 
     async def list_by_user_id(self, user_id: UUID) -> list[WebhookEndpoint]:
         """List all webhooks belonging to a user."""
+        ...
+
+    async def list_by_matrix_account_id(self, matrix_account_id: UUID) -> list[WebhookEndpoint]:
+        """List all webhooks configured for a specific matrix bot account."""
         ...
 
     async def save(self, webhook: WebhookEndpoint) -> WebhookEndpoint:

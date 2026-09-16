@@ -222,3 +222,138 @@ async def test_webhook_repository_crud(async_db_sessionmaker) -> None:
 
         assert await hook_repo.delete(webhook.id) is False
         assert await hook_repo.get_by_id(webhook.id) is None
+
+
+@pytest.mark.asyncio
+async def test_user_repository_delete(async_db_sessionmaker) -> None:
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        user = User(
+            email="to_delete@tchap.gouv.fr",
+            api_key_hash=hash_api_key("key_del"),
+            api_key_prefix="key_del...",
+        )
+        await user_repo.save(user)
+        await session.commit()
+
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        deleted = await user_repo.delete(user.id)
+        assert deleted is True
+        await session.commit()
+
+        assert await user_repo.get_by_id(user.id) is None
+        assert await user_repo.delete(user.id) is False
+
+
+@pytest.mark.asyncio
+async def test_webhook_repository_list_by_matrix_account_id(async_db_sessionmaker) -> None:
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        user = User(
+            email="wh_owner@tchap.gouv.fr",
+            api_key_hash=hash_api_key("wh_owner_key"),
+            api_key_prefix="wh_owner...",
+        )
+        await user_repo.save(user)
+
+        account_repo = SqlAlchemyMatrixAccountRepository(session)
+        bot1 = MatrixAccount(
+            name="Bot 1",
+            matrix_user_id="@bot1:agent.tchap.gouv.fr",
+            user_id=user.id,
+        )
+        bot2 = MatrixAccount(
+            name="Bot 2",
+            matrix_user_id="@bot2:agent.tchap.gouv.fr",
+            user_id=user.id,
+        )
+        await account_repo.save(bot1)
+        await account_repo.save(bot2)
+
+        hook_repo = SqlAlchemyWebhookRepository(session)
+        wh1 = WebhookEndpoint(
+            name="WH 1",
+            matrix_room_id="!r1:agent.tchap.gouv.fr",
+            matrix_account_id=bot1.id,
+            user_id=user.id,
+        )
+        wh2 = WebhookEndpoint(
+            name="WH 2",
+            matrix_room_id="!r2:agent.tchap.gouv.fr",
+            matrix_account_id=bot1.id,
+            user_id=user.id,
+        )
+        wh3 = WebhookEndpoint(
+            name="WH 3",
+            matrix_room_id="!r3:agent.tchap.gouv.fr",
+            matrix_account_id=bot2.id,
+            user_id=user.id,
+        )
+        await hook_repo.save(wh1)
+        await hook_repo.save(wh2)
+        await hook_repo.save(wh3)
+        await session.commit()
+
+    async with async_db_sessionmaker() as session:
+        hook_repo = SqlAlchemyWebhookRepository(session)
+        bot1_hooks = await hook_repo.list_by_matrix_account_id(bot1.id)
+        assert len(bot1_hooks) == 2
+        bot1_hook_ids = {h.id for h in bot1_hooks}
+        assert wh1.id in bot1_hook_ids
+        assert wh2.id in bot1_hook_ids
+
+        bot2_hooks = await hook_repo.list_by_matrix_account_id(bot2.id)
+        assert len(bot2_hooks) == 1
+        assert bot2_hooks[0].id == wh3.id
+
+
+@pytest.mark.asyncio
+async def test_sqlalchemy_cascade_delete_user_and_bots(async_db_sessionmaker) -> None:
+    """Verify that deleting a User cascades to bots and webhooks in the ORM."""
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        account_repo = SqlAlchemyMatrixAccountRepository(session)
+        hook_repo = SqlAlchemyWebhookRepository(session)
+
+        user = User(
+            email="cascade_user@tchap.gouv.fr",
+            api_key_hash=hash_api_key("cascade_key"),
+            api_key_prefix="cascade...",
+        )
+        await user_repo.save(user)
+
+        bot = MatrixAccount(
+            name="Cascade Bot",
+            matrix_user_id="@cascade_bot:agent.tchap.gouv.fr",
+            user_id=user.id,
+        )
+        await account_repo.save(bot)
+
+        wh = WebhookEndpoint(
+            name="Cascade WH",
+            matrix_room_id="!r_casc:agent.tchap.gouv.fr",
+            matrix_account_id=bot.id,
+            user_id=user.id,
+        )
+        await hook_repo.save(wh)
+        await session.commit()
+
+    # Delete the user via user_repo
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        account_repo = SqlAlchemyMatrixAccountRepository(session)
+        hook_repo = SqlAlchemyWebhookRepository(session)
+
+        assert await user_repo.delete(user.id) is True
+        await session.commit()
+
+    # Verify everything is gone
+    async with async_db_sessionmaker() as session:
+        user_repo = SqlAlchemyUserRepository(session)
+        account_repo = SqlAlchemyMatrixAccountRepository(session)
+        hook_repo = SqlAlchemyWebhookRepository(session)
+
+        assert await user_repo.get_by_id(user.id) is None
+        assert await account_repo.get_by_id(bot.id) is None
+        assert await hook_repo.get_by_id(wh.id) is None

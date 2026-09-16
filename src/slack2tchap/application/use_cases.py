@@ -26,6 +26,7 @@ from slack2tchap.domain.exceptions import (
     MatrixAccountNotFoundError,
     MatrixClientError,
     UserAlreadyExistsError,
+    UserNotFoundError,
     WebhookNotFoundError,
 )
 from slack2tchap.domain.models import (
@@ -124,15 +125,35 @@ class ListMatrixAccountsUseCase:
 
 
 class DeleteMatrixAccountUseCase:
-    """Use case to remove a Matrix bot account."""
+    """Use case to remove a Matrix bot account and its associated webhooks."""
 
-    def __init__(self, account_repo: MatrixAccountRepositoryPort) -> None:
+    def __init__(
+        self,
+        account_repo: MatrixAccountRepositoryPort,
+        webhook_repo: WebhookRepositoryPort | None = None,
+        client_manager: MatrixClientManagerPort | None = None,
+    ) -> None:
         self._account_repo = account_repo
+        self._webhook_repo = webhook_repo
+        self._client_manager = client_manager
 
-    async def execute(self, account_id: UUID, user_id: UUID) -> bool:
+    async def execute(self, account_id: UUID, user_id: UUID, is_admin: bool = False) -> bool:
         account = await self._account_repo.get_by_id(account_id)
-        if account is None or account.user_id != user_id:
+        if account is None:
             raise MatrixAccountNotFoundError(f"Matrix account {account_id} not found.")
+        if not is_admin and account.user_id != user_id:
+            raise MatrixAccountNotFoundError(f"Matrix account {account_id} not found.")
+
+        # Delete associated webhooks
+        if self._webhook_repo is not None:
+            associated_webhooks = await self._webhook_repo.list_by_matrix_account_id(account_id)
+            for wh in associated_webhooks:
+                await self._webhook_repo.delete(wh.id)
+
+        # Remove client if active
+        if self._client_manager is not None:
+            await self._client_manager.remove_client(account_id)
+
         return await self._account_repo.delete(account_id)
 
 
@@ -274,9 +295,11 @@ class DeleteWebhookUseCase:
     def __init__(self, webhook_repo: WebhookRepositoryPort) -> None:
         self._webhook_repo = webhook_repo
 
-    async def execute(self, webhook_id: UUID, user_id: UUID) -> bool:
+    async def execute(self, webhook_id: UUID, user_id: UUID, is_admin: bool = False) -> bool:
         webhook = await self._webhook_repo.get_by_id(webhook_id)
-        if webhook is None or webhook.user_id != user_id:
+        if webhook is None:
+            raise WebhookNotFoundError(f"Webhook {webhook_id} not found.")
+        if not is_admin and webhook.user_id != user_id:
             raise WebhookNotFoundError(f"Webhook {webhook_id} not found.")
         return await self._webhook_repo.delete(webhook_id)
 
@@ -338,6 +361,45 @@ class CreateUserUseCase:
             is_active=saved.is_active,
             created_at=saved.created_at.isoformat(),
         )
+
+
+class DeleteUserUseCase:
+    """Use case to remove a user account and cascade delete their bots and webhooks (admin-only)."""
+
+    def __init__(
+        self,
+        user_repo: UserRepositoryPort,
+        account_repo: MatrixAccountRepositoryPort,
+        webhook_repo: WebhookRepositoryPort,
+        client_manager: MatrixClientManagerPort | None = None,
+    ) -> None:
+        self._user_repo = user_repo
+        self._account_repo = account_repo
+        self._webhook_repo = webhook_repo
+        self._client_manager = client_manager
+
+    async def execute(self, user_id: UUID) -> bool:
+        user = await self._user_repo.get_by_id(user_id)
+        if user is None:
+            raise UserNotFoundError(f"User {user_id} not found.")
+
+        # Find and delete all webhooks belonging to this user
+        webhooks = await self._webhook_repo.list_by_user_id(user_id)
+        for webhook in webhooks:
+            await self._webhook_repo.delete(webhook.id)
+
+        # Find and delete all bots belonging to this user
+        bots = await self._account_repo.list_by_user_id(user_id)
+        for bot in bots:
+            if self._client_manager is not None:
+                await self._client_manager.remove_client(bot.id)
+            # Ensure any webhooks associated with the bot are also deleted
+            bot_webhooks = await self._webhook_repo.list_by_matrix_account_id(bot.id)
+            for bw in bot_webhooks:
+                await self._webhook_repo.delete(bw.id)
+            await self._account_repo.delete(bot.id)
+
+        return await self._user_repo.delete(user_id)
 
 
 class SendAlertUseCase:

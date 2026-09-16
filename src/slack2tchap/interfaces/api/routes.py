@@ -16,6 +16,7 @@ from slack2tchap.application.use_cases import (
     CreateUserUseCase,
     CreateWebhookUseCase,
     DeleteMatrixAccountUseCase,
+    DeleteUserUseCase,
     DeleteWebhookUseCase,
     ListMatrixAccountsUseCase,
     ListWebhooksUseCase,
@@ -28,6 +29,7 @@ from slack2tchap.domain.exceptions import (
     InvalidRoomIdError,
     MatrixAccountNotFoundError,
     UserAlreadyExistsError,
+    UserNotFoundError,
     VerificationTimeoutError,
     WebhookNotFoundError,
 )
@@ -39,6 +41,7 @@ from slack2tchap.interfaces.api.dependencies import (
     get_create_webhook_use_case,
     get_current_user,
     get_delete_matrix_account_use_case,
+    get_delete_user_use_case,
     get_delete_webhook_use_case,
     get_list_matrix_accounts_use_case,
     get_list_webhooks_use_case,
@@ -201,6 +204,31 @@ async def create_user(
     )
 
 
+@router.delete(
+    "/api/v1/admin/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a user account and their associated bots and webhooks (admin-only)",
+    tags=["Admin Users"],
+)
+async def delete_user(
+    user_id: UUID,
+    admin_user: Annotated[User, Depends(get_admin_user)],
+    use_case: Annotated[DeleteUserUseCase, Depends(get_delete_user_use_case)],
+) -> None:
+    """Delete a user account. Requires admin privileges.
+
+    Cascades deletion to all matrix bots and webhooks owned by the user.
+    """
+    logger.info("Admin %s deleting user id=%s", admin_user.email, user_id)
+    try:
+        await use_case.execute(user_id)
+    except UserNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=err.message,
+        ) from err
+
+
 # ============================================================================
 # ADMIN ENDPOINTS: MATRIX BOT ACCOUNTS (AUTHENTICATED VIA API KEY)
 # ============================================================================
@@ -277,7 +305,7 @@ async def list_matrix_accounts(
 @router.delete(
     "/api/v1/admin/matrix-accounts/{account_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a Matrix bot account by ID",
+    summary="Delete a Matrix bot account by ID and its associated webhooks",
     tags=["Admin Matrix Accounts"],
 )
 async def delete_matrix_account(
@@ -285,9 +313,16 @@ async def delete_matrix_account(
     current_user: Annotated[User, Depends(get_current_user)],
     use_case: Annotated[DeleteMatrixAccountUseCase, Depends(get_delete_matrix_account_use_case)],
 ) -> None:
-    """Delete a configured Matrix bot account."""
+    """Delete a configured Matrix bot account and its associated webhooks.
+
+    Admins can delete any bot; standard users can only delete their own.
+    """
     try:
-        await use_case.execute(account_id, current_user.id)
+        await use_case.execute(
+            account_id=account_id,
+            user_id=current_user.id,
+            is_admin=current_user.is_admin,
+        )
     except MatrixAccountNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -495,9 +530,16 @@ async def delete_webhook(
     current_user: Annotated[User, Depends(get_current_user)],
     use_case: Annotated[DeleteWebhookUseCase, Depends(get_delete_webhook_use_case)],
 ) -> None:
-    """Delete a webhook destination."""
+    """Delete a webhook destination.
+
+    Admins can delete any webhook; standard users can only delete their own.
+    """
     try:
-        await use_case.execute(webhook_id, current_user.id)
+        await use_case.execute(
+            webhook_id=webhook_id,
+            user_id=current_user.id,
+            is_admin=current_user.is_admin,
+        )
     except WebhookNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -158,6 +158,18 @@ class MatrixClientManager(MatrixClientManagerPort):
         """Alias for get_or_create_client."""
         return await self.get_or_create_client(account_id)
 
+    async def remove_client(self, account_id: UUID) -> None:
+        """Close and remove an active Matrix client session."""
+        async with self._lock:
+            client = self._clients.pop(account_id, None)
+            self._store_fingerprints.pop(account_id, None)
+            self._persist_locks.pop(account_id, None)
+            if client is not None:
+                try:
+                    await client.close()
+                except Exception as exc:
+                    logger.error("Error closing Matrix client %s: %s", account_id, exc)
+
     async def start_all_clients(self) -> None:
         """Start Matrix clients for all configured and active accounts at startup."""
         async with self._get_repo() as repo:

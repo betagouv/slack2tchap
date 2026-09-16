@@ -448,3 +448,293 @@ async def test_create_user_use_case_generates_unique_keys() -> None:
 
     assert dto1.raw_api_key != dto2.raw_api_key
     assert dto1.id != dto2.id
+
+
+# ===========================================================================
+# 6. USER DELETION AND CASCADE (ADMIN ONLY)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_admin_deletes_user_cascades_bots_and_webhooks() -> None:
+    """Admin can delete a user, which automatically cascades to their bots and webhooks."""
+    user_repo = FakeUserRepository()
+    account_repo = FakeMatrixAccountRepository()
+    webhook_repo = FakeWebhookRepository()
+    messenger = FakeMatrixMessenger()
+
+    _make_admin(user_repo)
+    user_b = _make_user(user_repo, "userb@beta.gouv.fr", USER_B_RAW_KEY)
+
+    # User B creates 2 bots
+    bot_b1 = MatrixAccount(
+        name="Bot B1",
+        matrix_user_id="@bot-b1:agent.tchap.gouv.fr",
+        user_id=user_b.id,
+    )
+    bot_b2 = MatrixAccount(
+        name="Bot B2",
+        matrix_user_id="@bot-b2:agent.tchap.gouv.fr",
+        user_id=user_b.id,
+    )
+    await account_repo.save(bot_b1)
+    await account_repo.save(bot_b2)
+
+    # User B creates 2 webhooks (one for each bot)
+    wh_b1 = WebhookEndpoint(
+        name="Webhook B1",
+        matrix_room_id="!room1:agent.tchap.gouv.fr",
+        matrix_account_id=bot_b1.id,
+        user_id=user_b.id,
+    )
+    wh_b2 = WebhookEndpoint(
+        name="Webhook B2",
+        matrix_room_id="!room2:agent.tchap.gouv.fr",
+        matrix_account_id=bot_b2.id,
+        user_id=user_b.id,
+    )
+    await webhook_repo.save(wh_b1)
+    await webhook_repo.save(wh_b2)
+
+    app = _make_app(user_repo, account_repo, webhook_repo, messenger)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/users/{user_b.id}",
+            headers={"X-API-Key": ADMIN_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    # User is deleted
+    assert await user_repo.get_by_id(user_b.id) is None
+
+    # Bots are cascade-deleted
+    assert await account_repo.get_by_id(bot_b1.id) is None
+    assert await account_repo.get_by_id(bot_b2.id) is None
+    assert await account_repo.list_by_user_id(user_b.id) == []
+
+    # Webhooks are cascade-deleted
+    assert await webhook_repo.get_by_id(wh_b1.id) is None
+    assert await webhook_repo.get_by_id(wh_b2.id) is None
+    assert await webhook_repo.list_by_user_id(user_b.id) == []
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_delete_user_returns_403() -> None:
+    """Non-admin user cannot delete any user (403 Forbidden)."""
+    user_repo = FakeUserRepository()
+    account_repo = FakeMatrixAccountRepository()
+    webhook_repo = FakeWebhookRepository()
+
+    _make_admin(user_repo)
+    user_a = _make_user(user_repo, "usera@beta.gouv.fr", USER_A_RAW_KEY)
+    user_b = _make_user(user_repo, "userb@beta.gouv.fr", USER_B_RAW_KEY)
+
+    app = _make_app(user_repo, account_repo, webhook_repo)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/users/{user_b.id}",
+            headers={"X-API-Key": USER_A_RAW_KEY},
+        )
+        assert resp.status_code == 403
+        assert "Admin privileges required" in resp.json()["detail"]
+
+        # Self-deletion attempt by non-admin also rejected
+        self_resp = await client.delete(
+            f"/api/v1/admin/users/{user_a.id}",
+            headers={"X-API-Key": USER_A_RAW_KEY},
+        )
+        assert self_resp.status_code == 403
+
+    # Both users still exist
+    assert await user_repo.get_by_id(user_a.id) is not None
+    assert await user_repo.get_by_id(user_b.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_cannot_delete_user_returns_401() -> None:
+    """Unauthenticated request to delete user returns 401."""
+    user_repo = FakeUserRepository()
+    user = _make_user(user_repo, "victim@beta.gouv.fr", "s2t_live_victim")
+
+    app = _make_app(user_repo, FakeMatrixAccountRepository(), FakeWebhookRepository())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(f"/api/v1/admin/users/{user.id}")
+        assert resp.status_code == 401
+
+    assert await user_repo.get_by_id(user.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_non_existent_user_returns_404() -> None:
+    """Admin deleting a non-existent user returns 404."""
+    user_repo = FakeUserRepository()
+    _make_admin(user_repo)
+
+    app = _make_app(user_repo, FakeMatrixAccountRepository(), FakeWebhookRepository())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/users/{uuid4()}",
+            headers={"X-API-Key": ADMIN_RAW_KEY},
+        )
+        assert resp.status_code == 404
+
+
+# ===========================================================================
+# 7. BOT AND WEBHOOK DELETION ACCESS CONTROL (ADMIN VS USER)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_admin_can_delete_any_bot() -> None:
+    """Admin can delete a bot owned by any user."""
+    user_repo = FakeUserRepository()
+    account_repo = FakeMatrixAccountRepository()
+    _make_admin(user_repo)
+    user_b = _make_user(user_repo, "b@beta.gouv.fr", USER_B_RAW_KEY)
+
+    bot_b = MatrixAccount(
+        name="Bot B",
+        matrix_user_id="@bot-b:agent.tchap.gouv.fr",
+        user_id=user_b.id,
+    )
+    await account_repo.save(bot_b)
+
+    app = _make_app(user_repo, account_repo, FakeWebhookRepository())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/matrix-accounts/{bot_b.id}",
+            headers={"X-API-Key": ADMIN_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    assert await account_repo.get_by_id(bot_b.id) is None
+
+
+@pytest.mark.asyncio
+async def test_user_can_delete_own_bot() -> None:
+    """Standard user can delete their own bot."""
+    user_repo = FakeUserRepository()
+    account_repo = FakeMatrixAccountRepository()
+    user_a = _make_user(user_repo, "a@beta.gouv.fr", USER_A_RAW_KEY)
+
+    bot_a = MatrixAccount(
+        name="Bot A",
+        matrix_user_id="@bot-a:agent.tchap.gouv.fr",
+        user_id=user_a.id,
+    )
+    await account_repo.save(bot_a)
+
+    app = _make_app(user_repo, account_repo, FakeWebhookRepository())
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/matrix-accounts/{bot_a.id}",
+            headers={"X-API-Key": USER_A_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    assert await account_repo.get_by_id(bot_a.id) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_bot_cascades_to_associated_webhooks() -> None:
+    """Deleting a bot deletes all associated webhooks."""
+    user_repo = FakeUserRepository()
+    account_repo = FakeMatrixAccountRepository()
+    webhook_repo = FakeWebhookRepository()
+    user_a = _make_user(user_repo, "a@beta.gouv.fr", USER_A_RAW_KEY)
+
+    bot = MatrixAccount(
+        name="Bot To Delete",
+        matrix_user_id="@bot-del:agent.tchap.gouv.fr",
+        user_id=user_a.id,
+    )
+    await account_repo.save(bot)
+
+    wh1 = WebhookEndpoint(
+        name="Hook 1",
+        matrix_room_id="!r1:agent.tchap.gouv.fr",
+        matrix_account_id=bot.id,
+        user_id=user_a.id,
+    )
+    wh2 = WebhookEndpoint(
+        name="Hook 2",
+        matrix_room_id="!r2:agent.tchap.gouv.fr",
+        matrix_account_id=bot.id,
+        user_id=user_a.id,
+    )
+    await webhook_repo.save(wh1)
+    await webhook_repo.save(wh2)
+
+    app = _make_app(user_repo, account_repo, webhook_repo)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/matrix-accounts/{bot.id}",
+            headers={"X-API-Key": USER_A_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    assert await account_repo.get_by_id(bot.id) is None
+    assert await webhook_repo.get_by_id(wh1.id) is None
+    assert await webhook_repo.get_by_id(wh2.id) is None
+
+
+@pytest.mark.asyncio
+async def test_admin_can_delete_any_webhook() -> None:
+    """Admin can delete a webhook owned by any user."""
+    user_repo = FakeUserRepository()
+    webhook_repo = FakeWebhookRepository()
+    _make_admin(user_repo)
+    user_b = _make_user(user_repo, "b@beta.gouv.fr", USER_B_RAW_KEY)
+
+    wh = WebhookEndpoint(
+        name="Webhook B",
+        matrix_room_id="!rb:agent.tchap.gouv.fr",
+        matrix_account_id=uuid4(),
+        user_id=user_b.id,
+    )
+    await webhook_repo.save(wh)
+
+    app = _make_app(user_repo, FakeMatrixAccountRepository(), webhook_repo)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/webhooks/{wh.id}",
+            headers={"X-API-Key": ADMIN_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    assert await webhook_repo.get_by_id(wh.id) is None
+
+
+@pytest.mark.asyncio
+async def test_user_can_delete_own_webhook() -> None:
+    """Standard user can delete their own webhook."""
+    user_repo = FakeUserRepository()
+    webhook_repo = FakeWebhookRepository()
+    user_a = _make_user(user_repo, "a@beta.gouv.fr", USER_A_RAW_KEY)
+
+    wh = WebhookEndpoint(
+        name="Webhook A",
+        matrix_room_id="!ra:agent.tchap.gouv.fr",
+        matrix_account_id=uuid4(),
+        user_id=user_a.id,
+    )
+    await webhook_repo.save(wh)
+
+    app = _make_app(user_repo, FakeMatrixAccountRepository(), webhook_repo)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete(
+            f"/api/v1/admin/webhooks/{wh.id}",
+            headers={"X-API-Key": USER_A_RAW_KEY},
+        )
+        assert resp.status_code == 204
+
+    assert await webhook_repo.get_by_id(wh.id) is None
