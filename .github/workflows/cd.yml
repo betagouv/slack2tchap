@@ -1,0 +1,54 @@
+name: CD - Build & Release Binary
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-binary:
+    name: Build Linux x86_64 Standalone Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (libolm)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libolm-dev libolm3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install project dependencies
+        run: uv sync --dev
+
+      - name: Build standalone executable with PyInstaller
+        run: |
+          uv run pyinstaller \
+            --onefile \
+            --name slack2tchap-linux-amd64 \
+            --clean \
+            src/slack2tchap/main.py
+
+      - name: Smoke test binary
+        run: |
+          chmod +x dist/slack2tchap-linux-amd64
+          file dist/slack2tchap-linux-amd64
+
+      - name: Upload Binary to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/slack2tchap-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
