@@ -3,7 +3,7 @@
 import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from slack2tchap_core.domain.exceptions import (
     AuthenticationError,
@@ -53,17 +53,35 @@ async def handle_stateless_slack_webhook(
             description="Encrypted AES-256-GCM token containing Matrix bot username, password and channelID",
         ),
     ],
+    request: Request,
     use_case: Annotated[
         ProcessStatelessWebhookUseCase, Depends(get_process_stateless_webhook_use_case)
     ],
-) -> dict[str, Any]:
+    format: Annotated[
+        str | None,
+        Query(description="Response format ('json' or 'text'). Defaults to json with ok: true."),
+    ] = None,
+) -> Any:
     """Ingest a Slack/Mattermost alert and dispatch it directly to Matrix using credentials from the token."""
     alert = SlackPayloadParser.parse(payload)
     command = SendStatelessWebhookCommand(param_token=param, alert=alert)
 
     try:
         event_id = await use_case.execute(command)
+
+        # If client explicitly requests text/plain or format=text (classic Slack webhook format)
+        accept_header = request.headers.get("accept", "")
+        if format == "text" or (
+            "text/plain" in accept_header and "application/json" not in accept_header
+        ):
+            return Response(
+                content="ok",
+                media_type="text/plain; charset=utf-8",
+                headers={"X-Matrix-Event-ID": event_id},
+            )
+
         return {
+            "ok": True,
             "status": "success",
             "message": "Stateless alert dispatched to Matrix room",
             "event_id": event_id,

@@ -155,6 +155,7 @@ async def handle_public_webhook_by_id(
         result.event_id,
     )
     return WebhookResponse(
+        ok=result.success,
         success=result.success,
         room_id=result.room_id,
         is_encrypted=result.is_encrypted,
