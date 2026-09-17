@@ -83,6 +83,12 @@ Les 3 exécutables standalone sont générés dans le dossier `dist/` :
 
 ---
 
+## ☁️ Déploiement sur Scalingo
+
+- **Version Stateless (Zéro base de données)** : Idéal pour déployer rapidement sans aucun coût d'addon de base de données.
+  👉 Suivez le guide complet : [docs/DEPLOY_STATELESS_SCALINGO.md](docs/DEPLOY_STATELESS_SCALINGO.md)
+---
+
 ## 🤖 Pipeline CI/CD GitHub Actions
 
 Le workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) vérifie automatiquement sur chaque commit et Pull Request :

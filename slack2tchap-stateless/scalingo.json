@@ -1,0 +1,34 @@
+{
+  "name": "slack2tchap-stateless",
+  "description": "Passerelle webhook 100% Stateless Slack vers Matrix / Tchap (Zéro base de données)",
+  "repository": "https://github.com/betagouv/slack2tchap",
+  "env": {
+    "PROJECT_DIR": {
+      "description": "Sous-dossier contenant l'application stateless",
+      "value": "slack2tchap-stateless"
+    },
+    "ENVIRONMENT": {
+      "description": "Environnement d'exécution (production)",
+      "value": "production"
+    },
+    "SECRET_ENCRYPTION_KEY": {
+      "description": "Clé secrète maître de chiffrement AES-256-GCM des tokens",
+      "generator": "secret"
+    },
+    "UV_NO_EDITABLE": {
+      "description": "Oblige UV à copier physiquement les paquets locaux du workspace",
+      "value": "1"
+    },
+    "MATRIX_HOMESERVER": {
+      "description": "URL du homeserver Matrix / Tchap par défaut",
+      "value": "https://matrix.agent.tchap.gouv.fr"
+    },
+    "PUBLIC_BASE_URL": {
+      "description": "URL publique de l'application (ex: https://slack2tchap-stateless.osc-fr1.scalingo.io)",
+      "value": ""
+    }
+  },
+  "buildpacks": [
+    "https://github.com/Scalingo/python-buildpack.git"
+  ]
+}

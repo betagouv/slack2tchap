@@ -94,6 +94,15 @@ Le binaire standalone produit dans `dist/slack2tchap-stateless` fonctionne sans 
 
 ---
 
+## ☁️ Déploiement sur Scalingo (PaaS)
+
+La version stateless est optimisée pour Scalingo avec un conteneur web unique et **ZÉRO base de données** (aucun addon payant nécessaire).
+
+Pour les instructions détaillées de déploiement (variables `UV_NO_EDITABLE=1`, `SECRET_ENCRYPTION_KEY`, commandes Scalingo CLI) :
+👉 Consultez le guide complet : [docs/DEPLOY_STATELESS_SCALINGO.md](../docs/DEPLOY_STATELESS_SCALINGO.md)
+
+---
+
 ## 📡 Routes HTTP exposées
 
 | Méthode | Route | Description |
