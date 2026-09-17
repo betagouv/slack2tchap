@@ -58,6 +58,7 @@ class SlackWebhookPayload(BaseModel):
 class WebhookResponse(BaseModel):
     """Response returned upon webhook processing."""
 
+    ok: bool = Field(default=True, description="Slack-compatible boolean flag")
     success: bool = Field(..., description="Whether the message was successfully dispatched")
     room_id: str = Field(..., description="Target Matrix room ID")
     is_encrypted: bool = Field(

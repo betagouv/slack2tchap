@@ -117,6 +117,7 @@ async def test_stateless_webhook_success(
 
     assert resp.status_code == 200
     data = resp.json()
+    assert data["ok"] is True
     assert data["status"] == "success"
     assert "event_id" in data
 
@@ -406,3 +407,41 @@ def test_stateless_settings_production_security(
         environment="development",
     )
     assert dev_settings.environment == "development"
+
+
+@pytest.mark.asyncio
+async def test_stateless_webhook_text_format(
+    fake_stateless_messenger: FakeStatelessMessenger,
+) -> None:
+    cipher = AesGcmSecretCipher(TEST_CIPHER_SECRET)
+    token_data = {
+        "username": "@bot:agent.tchap.gouv.fr",
+        "password": "bot_password_123",
+        "channelID": "!room123:agent.tchap.gouv.fr",
+    }
+    param_token = cipher.encrypt_token(json.dumps(token_data))
+
+    app = create_app()
+    app.dependency_overrides[get_secret_cipher] = lambda: cipher
+    app.dependency_overrides[get_stateless_messenger] = lambda: fake_stateless_messenger
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Test with format=text query param
+        resp = await client.post(
+            f"/slack?param={param_token}&format=text",
+            json={"text": "Alert text format"},
+        )
+        assert resp.status_code == 200
+        assert resp.text == "ok"
+        assert resp.headers["content-type"].startswith("text/plain")
+
+        # Test with Accept: text/plain header
+        resp_header = await client.post(
+            f"/slack?param={param_token}",
+            headers={"Accept": "text/plain"},
+            json={"text": "Alert accept header"},
+        )
+        assert resp_header.status_code == 200
+        assert resp_header.text == "ok"
+        assert resp_header.headers["content-type"].startswith("text/plain")
