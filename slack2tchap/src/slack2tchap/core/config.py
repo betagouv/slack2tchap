@@ -64,7 +64,7 @@ class Settings(BaseSettings):
         description="Logging level",
     )
     environment: str = Field(
-        default="development",
+        default="production",
         description="Application environment (development, staging, production)",
     )
 

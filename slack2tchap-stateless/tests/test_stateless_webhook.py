@@ -1,6 +1,7 @@
 """Tests for fully stateless Slack webhook route /slack?param={encrypted...}."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -370,3 +371,38 @@ async def test_stateless_matrix_messenger_login_failure() -> None:
             )
 
     mock_client.close.assert_awaited_once()
+
+
+def test_stateless_settings_production_security(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pydantic import ValidationError
+
+    from slack2tchap_stateless.core.config import DEFAULT_INSECURE_SECRET_KEY, Settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SECRET_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    # By default without environment variables or .env: defaults to production and rejects default key
+    with pytest.raises(ValidationError, match="SECRET_ENCRYPTION_KEY must be explicitly set"):
+        Settings()
+
+    # In production with explicit insecure key: fails
+    with pytest.raises(ValidationError, match="SECRET_ENCRYPTION_KEY must be explicitly set"):
+        Settings(
+            environment="production",
+            secret_encryption_key=DEFAULT_INSECURE_SECRET_KEY,  # type: ignore[arg-type]
+        )
+
+    # In production with custom secure key: succeeds and environment is production
+    prod_settings = Settings(
+        secret_encryption_key="custom_production_key_32_bytes_long!",  # type: ignore[arg-type]
+    )
+    assert prod_settings.environment == "production"
+
+    # In development mode: default key is accepted
+    dev_settings = Settings(
+        environment="development",
+    )
+    assert dev_settings.environment == "development"

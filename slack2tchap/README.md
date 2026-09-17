@@ -24,9 +24,20 @@ Contrairement à `slack2tchap-stateless` qui fonctionne sans base de données po
 
 ### 1. Variables d'environnement (`.env`)
 
+Générez une clé de chiffrement maître de 256 bits (32 octets aléatoires) :
+```bash
+# Avec OpenSSL (recommandé) :
+openssl rand -hex 32
+
+# Ou avec Python / uv :
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Configurez votre fichier `.env` :
+
 ```env
 # Clé maîtresse de chiffrement AES-256-GCM (32 octets / 256 bits)
-SECRET_ENCRYPTION_KEY=votre_cle_secrete_hautement_securisee_256_bits!
+SECRET_ENCRYPTION_KEY=a1b2c3d4e5f6... (valeur générée)
 
 # Base de données (SQLite par défaut, ou PostgreSQL asyncpg)
 DATABASE_URL=sqlite+aiosqlite:///./slack2tchap.db

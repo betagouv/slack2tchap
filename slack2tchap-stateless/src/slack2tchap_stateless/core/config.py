@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_INSECURE_SECRET_KEY = (
@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     )
 
     # General
-    environment: str = Field(default="production")
+    environment: str = Field(
+        default="production",
+        description="Application environment (development, staging, production)",
+    )
     log_level: str = Field(default="INFO")
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
@@ -42,16 +45,18 @@ class Settings(BaseSettings):
         description="Whether ephemeral bot automatically joins room if not already joined.",
     )
 
-    @field_validator("secret_encryption_key")
-    @classmethod
-    def validate_production_keys(cls, v: SecretStr, info: object) -> SecretStr:
-        data = getattr(info, "data", {})
-        env = data.get("environment", "production")
-        if env == "production" and v.get_secret_value() == DEFAULT_INSECURE_SECRET_KEY:
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Disallow default insecure encryption key when running in production."""
+        if (
+            self.environment.strip().lower() == "production"
+            and self.secret_encryption_key.get_secret_value() == DEFAULT_INSECURE_SECRET_KEY
+        ):
             raise ValueError(
-                "SECRET_ENCRYPTION_KEY must be explicitly set to a secure secret in production."
+                "SECRET_ENCRYPTION_KEY must be explicitly set to a secure 256-bit key in production environment. "
+                "The default development key is rejected."
             )
-        return v
+        return self
 
 
 @lru_cache

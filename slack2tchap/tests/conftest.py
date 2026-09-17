@@ -1,5 +1,14 @@
 """Test suite configuration and fixtures for slack2tchap."""
 
+import os
+
+# Ensure default development environment variables are set before importing app/config
+os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault(
+    "SECRET_ENCRYPTION_KEY",
+    "32_bytes_super_secret_test_key_for_cipher!",
+)
+
 import pytest
 
 from fakes import (

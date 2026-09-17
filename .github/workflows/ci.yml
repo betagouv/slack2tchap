@@ -6,9 +6,17 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  ENVIRONMENT: development
+  SECRET_ENCRYPTION_KEY: "ci-secret-encryption-key-for-tests-32b!"
 
 jobs:
   quality-and-tests:

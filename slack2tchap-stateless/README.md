@@ -56,8 +56,20 @@ Le script produit l'URL prête à être renseignée dans Grafana, Alertmanager, 
 
 ### 1. Variables d'environnement (`.env`)
 
+Générez une clé de chiffrement maître de 256 bits (32 octets aléatoires) :
+```bash
+# Avec OpenSSL (recommandé) :
+openssl rand -hex 32
+
+# Ou avec Python / uv :
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Configurez votre fichier `.env` :
+
 ```env
-SECRET_ENCRYPTION_KEY=votre_cle_secrete_hautement_securisee_256_bits!
+# Clé maîtresse de chiffrement AES-256-GCM générée ci-dessus
+SECRET_ENCRYPTION_KEY=a1b2c3d4e5f6... (valeur générée)
 ENVIRONMENT=production
 LOG_LEVEL=INFO
 HOST=0.0.0.0

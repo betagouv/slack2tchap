@@ -1,5 +1,7 @@
 """Unit tests for cryptographic security components (API keys and AES-GCM cipher)."""
 
+from pathlib import Path
+
 import pytest
 
 from slack2tchap.domain.exceptions import CipherError
@@ -79,16 +81,21 @@ def test_aes_gcm_wrong_key_fails() -> None:
 
 
 def test_production_environment_rejects_default_encryption_key(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from pydantic import ValidationError
 
     from slack2tchap.core.config import DEFAULT_INSECURE_SECRET_KEY, Settings
 
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SECRET_ENCRYPTION_KEY", raising=False)
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
 
-    # In production with default key: must raise ValidationError
+    # By default without environment variables or .env: defaults to production and rejects default key
+    with pytest.raises(ValidationError, match="SECRET_ENCRYPTION_KEY must be explicitly set"):
+        Settings()
+
+    # In production with explicit default key: must raise ValidationError
     with pytest.raises(ValidationError, match="SECRET_ENCRYPTION_KEY must be explicitly set"):
         Settings(
             environment="production",
@@ -97,7 +104,10 @@ def test_production_environment_rejects_default_encryption_key(
 
     # In production with custom secure key: valid
     s = Settings(
-        environment="production",
         secret_encryption_key="custom_production_secure_master_key_256!!",  # type: ignore[arg-type]
     )
     assert s.environment == "production"
+
+    # In development mode: default key is accepted
+    dev_settings = Settings(environment="development")
+    assert dev_settings.environment == "development"
