@@ -8,8 +8,8 @@ Ce sous-projet regroupe tous les composants purs, agnostiques des frameworks web
 - **Modèles de domaine purs** (`AlertMessage`, `AlertAttachment`, `RoomId`, `MatrixUserId`, etc.)
 - **Ports & Interfaces** (`SecretCipherPort`, `StatelessMessengerPort`, `MatrixMessengerPort`, `UserRepositoryPort`, etc.)
 - **Exceptions de domaine** (`DomainError`, `CipherError`, `AuthenticationError`, etc.)
-- **Chiffrement AEAD AES-256-GCM** avec génération et validation de tokens URL-safe
-- **Hachage cryptographique et validation de clés API** (SHA-256 avec comparaison en temps constant)
+- **Chiffrement AEAD AES-256-GCM** avec dérivation PBKDF2 et validation de tokens URL-safe
+- **Hachage cryptographique et validation de clés API** (HMAC-SHA256 avec comparaison en temps constant)
 - **Parser de payload entrant Slack / Mattermost** avec conversion vers le format Matrix Markdown / HTML
 - **Outils Matrix partagés** (résolution de homeserver Tchap, construction de messages)
 - **CLI binaire autonome (`slack2tchap-core`)** pour les manipulations cryptographiques et de validation

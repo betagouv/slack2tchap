@@ -71,8 +71,9 @@ class SlackPayloadParser:
     """Transforms Slack / Mattermost webhook payloads into pure domain AlertMessage."""
 
     # Regex for Slack mrkdwn links: <https://example.com|Title> or <https://example.com>
-    SLACK_LINK_WITH_TITLE_RE = re.compile(r"<([^|>]+)\|([^>]+)>")
-    SLACK_BARE_LINK_RE = re.compile(r"<([^|>]+)>")
+    # Disallowing '<' and '|' prevents polynomial backtracking / ReDoS on crafted malicious input
+    SLACK_LINK_WITH_TITLE_RE = re.compile(r"<([^<>|]+)\|([^<>|]+)>")
+    SLACK_BARE_LINK_RE = re.compile(r"<([^<>|]+)>")
     SLACK_SPECIAL_RE = re.compile(r"<!(here|channel|everyone)>")
 
     @classmethod

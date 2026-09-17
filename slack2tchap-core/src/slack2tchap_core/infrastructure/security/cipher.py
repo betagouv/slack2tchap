@@ -10,6 +10,10 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from slack2tchap_core.domain.exceptions import CipherError
 from slack2tchap_core.domain.ports import SecretCipherPort
 
+# Fixed application salt for PBKDF2 master key derivation
+MASTER_KEY_KDF_SALT = b"slack2tchap-master-cipher-kdf-salt-v1"
+MASTER_KEY_KDF_ITERATIONS = 100_000
+
 
 class AesGcmSecretCipher(SecretCipherPort):
     """AES-256-GCM authenticated cipher for encrypting sensitive credentials at rest and tokens."""
@@ -18,8 +22,14 @@ class AesGcmSecretCipher(SecretCipherPort):
         if not master_key_secret:
             raise CipherError("Master encryption key cannot be empty.")
 
-        # Ensure exact 32-byte key using SHA-256 derivation
-        self._key = hashlib.sha256(master_key_secret.encode("utf-8")).digest()
+        # Robust PBKDF2-HMAC-SHA256 key derivation (100,000 iterations)
+        # Prevents brute-force on human passphrases and satisfies CodeQL KDF requirements.
+        self._key = hashlib.pbkdf2_hmac(
+            "sha256",
+            master_key_secret.encode("utf-8"),
+            MASTER_KEY_KDF_SALT,
+            iterations=MASTER_KEY_KDF_ITERATIONS,
+        )
         self._aesgcm = AESGCM(self._key)
 
     def encrypt(self, plaintext: str) -> tuple[str, str]:

@@ -20,6 +20,26 @@ def test_api_key_hashing_and_verification() -> None:
     assert verify_api_key("s2t_live_wrong_key", key_hash) is False
 
 
+def test_api_key_hashing_with_instance_pepper() -> None:
+    raw_key = "s2t_live_m7m8eI6a8AXfqqfkZHKVLQlmL9U8F08axYlK5Zhd-S8"
+    pepper_a = "instance_secret_pepper_aaaaa_32bytes!"
+    pepper_b = "instance_secret_pepper_bbbbb_32bytes!"
+
+    hash_default = hash_api_key(raw_key)
+    hash_a = hash_api_key(raw_key, pepper=pepper_a)
+    hash_b = hash_api_key(raw_key, pepper=pepper_b)
+
+    # Hashes must differ across different instance peppers
+    assert hash_a != hash_b
+    assert hash_a != hash_default
+    assert hash_b != hash_default
+
+    # Verification must succeed only with the matching pepper
+    assert verify_api_key(raw_key, hash_a, pepper=pepper_a) is True
+    assert verify_api_key(raw_key, hash_a, pepper=pepper_b) is False
+    assert verify_api_key(raw_key, hash_a) is False
+
+
 def test_api_key_prefix_extraction() -> None:
     raw_key = "s2t_live_m7m8eI6a8AXfqqfkZHKVLQlmL9U8F08axYlK5Zhd-S8"
     prefix = extract_api_key_prefix(raw_key, length=12)

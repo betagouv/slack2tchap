@@ -6,17 +6,18 @@ Génère :
 2. ADMIN_API_KEY : Clé API à haute entropie avec préfixe reconnaissable pour l'administrateur initial.
 """
 
-import hashlib
 import secrets
 
+from slack2tchap_core.infrastructure.security.api_key import hash_api_key
 
-def generate_api_key(prefix: str = "s2t_live_") -> tuple[str, str, str]:
-    """Generate a high-entropy API key, its display prefix, and its SHA-256 hash."""
+
+def generate_api_key(prefix: str = "s2t_live_", pepper: str | None = None) -> tuple[str, str, str]:
+    """Generate a high-entropy API key, its display prefix, and its HMAC-SHA256 hash."""
     random_part = secrets.token_urlsafe(32)
     raw_key = f"{prefix}{random_part}"
     display_prefix = raw_key[:16] + "..."
-    sha256_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-    return raw_key, display_prefix, sha256_hash
+    key_hash = hash_api_key(raw_key, pepper=pepper)
+    return raw_key, display_prefix, key_hash
 
 
 def generate_encryption_key() -> str:
@@ -26,7 +27,7 @@ def generate_encryption_key() -> str:
 
 def main() -> None:
     enc_key = generate_encryption_key()
-    raw_api_key, display_prefix, sha256_hash = generate_api_key()
+    raw_api_key, display_prefix, key_hash = generate_api_key(pepper=enc_key)
 
     print("\n" + "=" * 68)
     print("🔐  GÉNÉRATION DES CLÉS DE SÉCURITÉ POUR SLACK2TCHAP")
@@ -36,9 +37,9 @@ def main() -> None:
     print(f"   Valeur (64 caractères hex / 256 bits) : {enc_key}")
 
     print("\n2. Clé API Administrateur (ADMIN_API_KEY)")
-    print(f"   Clé en clair  : {raw_api_key}")
-    print(f"   Préfixe       : {display_prefix}")
-    print(f"   Hash SHA-256  : {sha256_hash}")
+    print(f"   Clé en clair     : {raw_api_key}")
+    print(f"   Préfixe          : {display_prefix}")
+    print(f"   Hash HMAC-SHA256 : {key_hash}")
 
     print("\n" + "-" * 68)
     print("📋  COPIER-COLLER DANS VOTRE FICHIER .env :")

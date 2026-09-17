@@ -20,51 +20,163 @@ Contrairement à `slack2tchap-stateless` qui fonctionne sans base de données po
 
 ---
 
-## 🚀 Démarrage rapide
+## 🚀 Guide de démarrage et Premier Lancement
 
-### 1. Variables d'environnement (`.env`)
+### 1. Génération des clés de sécurité (`scripts/generate_api_key.py`)
 
-Générez une clé de chiffrement maître de 256 bits (32 octets aléatoires) :
+Au premier lancement, la passerelle a besoin de deux secrets critiques :
+1. **`SECRET_ENCRYPTION_KEY`** : Clé maîtresse AES-256 (32 octets aléatoires) utilisée pour chiffrer au repos les mots de passe et tokens Matrix, et poivrer les empreintes d'API keys.
+2. **`ADMIN_API_KEY`** : Clé d'API brute à haute entropie (`s2t_live_...`) permettant au compte administrateur initial de s'authentifier.
+
+Un script utilitaire génère ces deux clés en une seule commande et vous fournit le bloc prêt à copier-coller :
+
 ```bash
-# Avec OpenSSL (recommandé) :
-openssl rand -hex 32
-
-# Ou avec Python / uv :
-python3 -c "import secrets; print(secrets.token_hex(32))"
+uv run python scripts/generate_api_key.py
 ```
 
-Configurez votre fichier `.env` :
+*Exemple de sortie :*
+```text
+====================================================================
+🔐  GÉNÉRATION DES CLÉS DE SÉCURITÉ POUR SLACK2TCHAP
+====================================================================
+
+1. Clé maîtresse de chiffrement AES-256-GCM (SECRET_ENCRYPTION_KEY)
+   Valeur (64 caractères hex / 256 bits) : 7f8a9b2c3d4e5f60...
+
+2. Clé API Administrateur (ADMIN_API_KEY)
+   Clé en clair     : <VOTRE_CLE_API>
+   Préfixe          : s2t_live_m7m8eI...
+   Hash HMAC-SHA256 : e3b0c44298fc1c1...
+
+--------------------------------------------------------------------
+📋  COPIER-COLLER DANS VOTRE FICHIER .env :
+--------------------------------------------------------------------
+SECRET_ENCRYPTION_KEY=7f8a9b2c3d4e5f60...
+ADMIN_EMAIL=admin@tchap.gouv.fr
+ADMIN_API_KEY=<VOTRE_CLE_API>
+--------------------------------------------------------------------
+```
+
+---
+
+### 2. Configuration du fichier `.env`
+
+Créez un fichier `.env` à la racine de votre environnement ou du dossier `slack2tchap/` :
 
 ```env
-# Clé maîtresse de chiffrement AES-256-GCM (32 octets / 256 bits)
-SECRET_ENCRYPTION_KEY=a1b2c3d4e5f6... (valeur générée)
+# Clés cryptographiques (générées via scripts/generate_api_key.py)
+SECRET_ENCRYPTION_KEY=7f8a9b2c3d4e5f60... (votre clé 256 bits)
+ADMIN_EMAIL=admin@tchap.gouv.fr
+ADMIN_API_KEY=<VOTRE_CLE_API>
 
-# Base de données (SQLite par défaut, ou PostgreSQL asyncpg)
+# Base de données (SQLite par défaut, ou PostgreSQL pour la production)
 DATABASE_URL=sqlite+aiosqlite:///./slack2tchap.db
-# Pour PostgreSQL :
-# DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/slack2tchap
+# PostgreSQL : DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/slack2tchap
 
-# Environnement et logs
+# Configuration serveur HTTP
 ENVIRONMENT=production
 LOG_LEVEL=INFO
 HOST=0.0.0.0
 PORT=8000
 PUBLIC_BASE_URL=http://localhost:8000
 
-# Matrix / Tchap
+# Paramètres Matrix / Tchap
 MATRIX_HOMESERVER=https://matrix.agent.tchap.gouv.fr
 MATRIX_AUTO_JOIN=true
 ```
 
-### 2. Démarrer le serveur avec `uv`
+---
+
+### 3. Démarrer le serveur et initialisation automatique
+
+Lancez la passerelle avec `uv` :
 
 ```bash
 uv run uvicorn slack2tchap.main:app --host 0.0.0.0 --port 8000
 ```
 
-Au démarrage, les migrations Alembic sont appliquées automatiquement et un compte administrateur initial est créé si la base est vierge.
+Au démarrage :
+1. **Migrations automatiques Alembic** : La structure des tables (`users`, `matrix_accounts`, `webhooks`) est automatiquement créée ou mise à niveau.
+2. **Auto-seeding de l'Administrateur** : Si la base est vierge, le compte `ADMIN_EMAIL` est automatiquement créé avec l'empreinte sécurisée de votre `ADMIN_API_KEY`.
+3. Le serveur est prêt à recevoir vos requêtes d'administration sur `http://localhost:8000`.
 
-### 3. Compilation en binaire autonome (PyInstaller)
+---
+
+### 4. Workflow pas à pas : Configurer votre premier Webhook
+
+Toutes les requêtes d'administration s'authentifient via le header `X-API-Key: <VOTRE_CLE>` ou `Authorization: Bearer <VOTRE_CLE>`.
+
+#### Étape 4.1 : Enregistrer votre compte bot Matrix
+Le mot de passe du bot est automatiquement chiffré en AES-256-GCM avant stockage :
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/matrix-accounts \
+  -H "X-API-Key: <VOTRE_CLE_API>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Bot Alertes Production",
+    "matrix_user_id": "@mon-bot:agent.tchap.gouv.fr",
+    "password": "MotDePasseTchapSecretDuBot"
+  }'
+```
+
+*Réponse (conservez l'`id` du bot) :*
+```json
+{
+  "id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "name": "Bot Alertes Production",
+  "matrix_user_id": "@mon-bot:agent.tchap.gouv.fr",
+  "device_id": "AUTO_DEVICE_...",
+  "has_password": true,
+  "has_access_token": false,
+  "created_at": "2026-09-17T10:00:00Z"
+}
+```
+
+#### Étape 4.2 : Créer un point de terminaison webhook Slack
+Associez le bot à un salon Tchap cible :
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/webhooks \
+  -H "X-API-Key: <VOTRE_CLE_API>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Supervision Grafana",
+    "matrix_room_id": "!salon_astreinte:agent.tchap.gouv.fr",
+    "matrix_account_id": "a1b2c3d4-0000-0000-0000-000000000001"
+  }'
+```
+
+*Réponse :*
+```json
+{
+  "id": "e5f6a7b8-1111-2222-3333-444455556666",
+  "name": "Supervision Grafana",
+  "matrix_room_id": "!salon_astreinte:agent.tchap.gouv.fr",
+  "matrix_account_id": "a1b2c3d4-0000-0000-0000-000000000001",
+  "public_url": "http://localhost:8000/webhook/slack/e5f6a7b8-1111-2222-3333-444455556666",
+  "is_active": true,
+  "created_at": "2026-09-17T10:05:00Z"
+}
+```
+
+L'URL publique `http://localhost:8000/webhook/slack/e5f6a7b8-...` est prête à être renseignée dans vos générateurs d'alertes (Grafana, Alertmanager, Sentry, GitLab...).
+
+#### Étape 4.3 : (Optionnel) Créer un utilisateur non-admin
+En tant qu'administrateur, vous pouvez déléguer la gestion de webhooks à une autre équipe :
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/users \
+  -H "X-API-Key: <VOTRE_CLE_API>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "equipe-infra@domaine.gouv.fr"}'
+```
+
+La réponse fournit une nouvelle clé d'API (`s2t_live_...`) dédiée à cet utilisateur.
+
+---
+
+### 5. Compilation en binaire autonome (PyInstaller)
 
 ```bash
 uv run pyinstaller --onefile --name slack2tchap src/slack2tchap/main.py
@@ -100,7 +212,7 @@ Pour les salons Tchap chiffrés de bout en bout :
 2. Déclenchez la vérification interactive :
    ```bash
    curl -X POST http://localhost:8000/verify/<BOT_UUID> \
-     -H "Authorization: Bearer <VOTRE_CLE_API>"
+     -H "X-API-Key: <VOTRE_CLE_API>"
    ```
 3. L'API retourne les émojis SAS à comparer avec votre application Tchap (Web ou Mobile) :
    ```json

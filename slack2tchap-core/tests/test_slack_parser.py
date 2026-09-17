@@ -88,3 +88,21 @@ def test_parse_fallback_when_no_text_in_attachment() -> None:
     assert alert.severity == AlertSeverity.WARNING
     assert len(alert.attachments) == 1
     assert alert.attachments[0].text == "Backup failed"
+
+
+def test_clean_slack_text_redos_safety() -> None:
+    # Strings matching CodeQL ReDoS warnings:
+    # 1. Starting with '<' and many repetitions of '<='
+    evil_repetitions_left = "<" + "<=" * 5000 + "<="
+    cleaned_1 = SlackPayloadParser.clean_slack_text(evil_repetitions_left)
+    assert cleaned_1 == evil_repetitions_left
+
+    # 2. Starting with '<=|' and many repetitions of '<=|='
+    evil_repetitions_pipe = "<=|" + "<=|=" * 5000
+    cleaned_2 = SlackPayloadParser.clean_slack_text(evil_repetitions_pipe)
+    assert cleaned_2 == evil_repetitions_pipe
+
+    # 3. Many repetitions of bare '<'
+    evil_bare = "<" * 10000 + "="
+    cleaned_3 = SlackPayloadParser.clean_slack_text(evil_bare)
+    assert cleaned_3 == evil_bare

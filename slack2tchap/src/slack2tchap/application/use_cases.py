@@ -1,6 +1,5 @@
 """Application use cases for sending alerts and managing webhooks and matrix bots."""
 
-import hashlib
 import logging
 import re
 import secrets
@@ -42,6 +41,10 @@ from slack2tchap.domain.ports import (
     SecretCipherPort,
     UserRepositoryPort,
     WebhookRepositoryPort,
+)
+from slack2tchap.infrastructure.security.api_key import (
+    extract_api_key_prefix,
+    hash_api_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -314,7 +317,7 @@ class AuthenticateApiKeyUseCase:
         if not raw_api_key or not raw_api_key.strip():
             raise InvalidApiKeyError("API key cannot be empty.")
 
-        key_hash = hashlib.sha256(raw_api_key.strip().encode("utf-8")).hexdigest()
+        key_hash = hash_api_key(raw_api_key)
         user = await self._user_repo.get_by_api_key_hash(key_hash)
 
         if user is None or not user.is_active:
@@ -339,8 +342,8 @@ class CreateUserUseCase:
             raise UserAlreadyExistsError(f"A user with email '{normalized_email}' already exists.")
 
         raw_key = f"{self.API_KEY_PREFIX}{secrets.token_urlsafe(32)}"
-        key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-        key_prefix = raw_key[:16] + "..."
+        key_hash = hash_api_key(raw_key)
+        key_prefix = extract_api_key_prefix(raw_key, length=16)
 
         user = User(
             email=normalized_email,

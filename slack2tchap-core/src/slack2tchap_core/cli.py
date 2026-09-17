@@ -65,13 +65,14 @@ def cmd_decrypt_token(args: argparse.Namespace) -> None:
 
 
 def cmd_hash_api_key(args: argparse.Namespace) -> None:
-    """Compute SHA-256 hash for an API key."""
+    """Compute HMAC-SHA256 hash for an API key."""
     raw_key = args.key or getpass.getpass("Clé API brute: ").strip()
     if not raw_key:
         print("❌ Erreur : Clé API vide.", file=sys.stderr)
         sys.exit(1)
-    print("\n🔑 Empreinte SHA-256 :")
-    print(hash_api_key(raw_key))
+    pepper = args.secret_key or os.getenv("SECRET_ENCRYPTION_KEY")
+    print("\n🔑 Empreinte HMAC-SHA256 :")
+    print(hash_api_key(raw_key, pepper=pepper))
 
 
 def cmd_parse_slack(args: argparse.Namespace) -> None:
@@ -119,8 +120,13 @@ def main() -> None:
     p_dec.set_defaults(func=cmd_decrypt_token)
 
     # hash-key
-    p_hash = subparsers.add_parser("hash-key", help="Générer l'empreinte SHA-256 d'une clé API")
+    p_hash = subparsers.add_parser("hash-key", help="Générer l'empreinte HMAC-SHA256 d'une clé API")
     p_hash.add_argument("-k", "--key", help="Clé API brute")
+    p_hash.add_argument(
+        "-s",
+        "--secret-key",
+        help="Optionnel : clé secrète serveur (SECRET_ENCRYPTION_KEY) utilisée comme poivre",
+    )
     p_hash.set_defaults(func=cmd_hash_api_key)
 
     # parse-slack
