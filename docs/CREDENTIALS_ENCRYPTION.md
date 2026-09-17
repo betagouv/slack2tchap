@@ -40,7 +40,7 @@ Pour chiffrer ces secrets, `slack2tchap` implémente **AES-256 en mode GCM** (Ga
 
 Une règle fondamentale du mode GCM est qu'**un couple (Clé, Nonce) ne doit JAMAIS être réutilisé**, sous peine d'effondrement de la sécurité cryptographique.
 
-Dans [`src/slack2tchap/infrastructure/security/cipher.py`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/infrastructure/security/cipher.py) :
+Dans [`slack2tchap-core/src/slack2tchap_core/infrastructure/security/cipher.py`](../slack2tchap-core/src/slack2tchap_core/infrastructure/security/cipher.py) :
 - À **chaque** opération de chiffrement, un nouveau nonce aléatoire de **96 bits (12 octets)** est généré via le générateur système cryptographiquement sûr (`os.urandom(12)`).
 - Ce nonce public est encodé en Base64 et persisté dans la colonne `encryption_nonce` de la table `webhooks`.
 - Le ciphertext produit contient le texte chiffré et son tag d'authentification.
@@ -55,7 +55,7 @@ La clé maîtresse est configurée dans le fichier d'environnement `.env` :
 SECRET_ENCRYPTION_KEY=une_cle_maitresse_robuste_et_secrete_d_au_moins_32_caracteres
 ```
 
-- L'application dérive de manière déterministe une clé brute de 32 octets (256 bits) à partir de ce secret grâce à `hashlib.sha256(secret.encode()).digest()`.
+- L'application dérive de manière déterministe une clé brute de 32 octets (256 bits) à partir de ce secret grâce à PBKDF2-HMAC-SHA256 (100 000 itérations avec sel applicatif).
 - La clé maîtresse n'est **jamais stockée dans la base de données PostgreSQL**.
 - En environnement conteneurisé ou Kubernetes, cette variable doit être injectée via un secret dédié (K8s Secret, HashiCorp Vault, AWS Secrets Manager, Scaleway Secret Manager).
 
@@ -73,7 +73,7 @@ SECRET_ENCRYPTION_KEY=une_cle_maitresse_robuste_et_secrete_d_au_moins_32_caracte
      "custom_matrix_password": "MotDePasseTresSecretDuBot"
    }
    ```
-2. Le Use Case [`CreateWebhookUseCase`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/application/use_cases.py) fait appel à [`AesGcmSecretCipher.encrypt()`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/infrastructure/security/cipher.py#L25).
+2. Le Use Case [`CreateWebhookUseCase`](../slack2tchap/src/slack2tchap/application/use_cases.py) fait appel à [`AesGcmSecretCipher.encrypt()`](../slack2tchap-core/src/slack2tchap_core/infrastructure/security/cipher.py#L25).
 3. Le mot de passe est chiffré.
 4. En base de données PostgreSQL, les champs enregistrés sont :
    - `custom_matrix_user_id`: `@bot-supervision:agent.tchap.gouv.fr`
@@ -83,6 +83,6 @@ SECRET_ENCRYPTION_KEY=une_cle_maitresse_robuste_et_secrete_d_au_moins_32_caracte
 
 ### Réception d'une alerte publique (Déchiffrement)
 1. Un système de supervision envoie un webhook à `POST /webhook/slack/{webhook_id}`.
-2. Le Use Case [`ProcessPublicWebhookUseCase`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/application/use_cases.py) extrait la ligne correspondante dans la table `webhooks`.
-3. Il utilise le nonce et le ciphertext pour déchiffrer en mémoire vive le mot de passe via [`AesGcmSecretCipher.decrypt()`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/infrastructure/security/cipher.py#L40).
+2. Le Use Case [`ProcessPublicWebhookUseCase`](../slack2tchap/src/slack2tchap/application/use_cases.py) extrait la ligne correspondante dans la table `webhooks`.
+3. Il utilise le nonce et le ciphertext pour déchiffrer en mémoire vive le mot de passe via [`AesGcmSecretCipher.decrypt()`](../slack2tchap-core/src/slack2tchap_core/infrastructure/security/cipher.py#L40).
 4. Le secret déchiffré n'est jamais consigné dans les logs et est immédiatement utilisé pour initialiser ou réutiliser la session Matrix.

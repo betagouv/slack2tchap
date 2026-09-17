@@ -179,7 +179,9 @@ La réponse fournit une nouvelle clé d'API (`s2t_live_...`) dédiée à cet uti
 ### 5. Compilation en binaire autonome (PyInstaller)
 
 ```bash
-uv run pyinstaller --onefile --name slack2tchap src/slack2tchap/main.py
+uv run pyinstaller --clean --noconfirm --onefile \
+  --name slack2tchap \
+  slack2tchap/src/slack2tchap/main.py
 ```
 
 Le binaire standalone est produit dans `dist/slack2tchap`.

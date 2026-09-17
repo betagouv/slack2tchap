@@ -1639,7 +1639,7 @@ wheels = [
 
 [[package]]
 name = "slack2tchap"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "slack2tchap" }
 dependencies = [
     { name = "aiosqlite" },
@@ -1672,7 +1672,7 @@ requires-dist = [
 
 [[package]]
 name = "slack2tchap-core"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "slack2tchap-core" }
 dependencies = [
     { name = "cryptography" },
@@ -1687,7 +1687,7 @@ requires-dist = [
 
 [[package]]
 name = "slack2tchap-stateless"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "slack2tchap-stateless" }
 dependencies = [
     { name = "certifi" },
@@ -1712,7 +1712,7 @@ requires-dist = [
 
 [[package]]
 name = "slack2tchap-workspace"
-version = "0.1.0"
+version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "slack2tchap" },

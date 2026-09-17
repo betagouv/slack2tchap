@@ -79,7 +79,7 @@ Stocke les destinations de routage des alertes :
 Au démarrage du serveur FastAPI (dans le gestionnaire de cycle de vie `lifespan` de `main.py`) :
 
 1. L'application charge les `Settings`.
-2. Le module [`migrator.py`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/infrastructure/database/migrator.py) invoque la commande Alembic :
+2. Le module [`migrator.py`](../slack2tchap/src/slack2tchap/infrastructure/database/migrator.py) invoque la commande Alembic :
    ```python
    command.upgrade(alembic_cfg, "head")
    ```
@@ -89,12 +89,12 @@ Au démarrage du serveur FastAPI (dans le gestionnaire de cycle de vie `lifespan
 
 ## 5. Seeding Automatique de l'Administrateur par Défaut
 
-Le premier démarrage applique la migration initiale [`alembic/versions/0001_initial_schema.py`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/alembic/versions/0001_initial_schema.py).
+Le premier démarrage applique la migration initiale [`alembic/versions/0001_initial_schema.py`](../slack2tchap/alembic/versions/0001_initial_schema.py).
 
 Si les variables `ADMIN_API_KEY` et `ADMIN_EMAIL` sont configurées dans votre `.env` :
-1. Alembic extrait la clé en clair fournie.
-2. Il calcule son hash `SHA-256` et son préfixe public.
-3. Il insère l'utilisateur administrateur en base de données.
+1. L'application extrait la clé en clair fournie.
+2. Elle calcule son hash `HMAC-SHA256` poivré et son préfixe public.
+3. Elle insère l'utilisateur administrateur en base de données.
 4. **La clé en clair n'est jamais écrite sur le disque ou en base de données**, respectant les principes de Zero-Trust.
 
 ---

@@ -1,4 +1,4 @@
-name: CD - Build & Release Binary
+name: CD - Build & Release Binaries
 
 on:
   release:
@@ -7,9 +7,13 @@ on:
 permissions:
   contents: write
 
+env:
+  ENVIRONMENT: development
+  SECRET_ENCRYPTION_KEY: "ci-secret-encryption-key-for-tests-32b!"
+
 jobs:
-  build-linux-binary:
-    name: Build Linux x86_64 Standalone Binary
+  build-linux-binaries:
+    name: Build Linux x86_64 Standalone Binaries (3 projects)
     runs-on: ubuntu-latest
 
     steps:
@@ -30,25 +34,41 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
-      - name: Install project dependencies
-        run: uv sync --dev
+      - name: Install workspace dependencies
+        run: uv sync
 
-      - name: Build standalone executable with PyInstaller
+      - name: Build slack2tchap-core binary
         run: |
-          uv run pyinstaller \
-            --onefile \
+          uv run pyinstaller --clean --noconfirm --onefile \
+            --name slack2tchap-core-linux-amd64 \
+            slack2tchap-core/src/slack2tchap_core/cli.py
+
+      - name: Build slack2tchap-stateless binary
+        run: |
+          uv run pyinstaller --clean --noconfirm --onefile \
+            --name slack2tchap-stateless-linux-amd64 \
+            slack2tchap-stateless/src/slack2tchap_stateless/main.py
+
+      - name: Build slack2tchap (stateful) binary
+        run: |
+          uv run pyinstaller --clean --noconfirm --onefile \
             --name slack2tchap-linux-amd64 \
-            --clean \
-            src/slack2tchap/main.py
+            slack2tchap/src/slack2tchap/main.py
 
-      - name: Smoke test binary
+      - name: Smoke test binaries
         run: |
-          chmod +x dist/slack2tchap-linux-amd64
-          file dist/slack2tchap-linux-amd64
+          chmod +x dist/*
+          file dist/*
+          ./dist/slack2tchap-core-linux-amd64 --version
+          ./dist/slack2tchap-stateless-linux-amd64 --help || true
+          ./dist/slack2tchap-linux-amd64 --help || true
 
-      - name: Upload Binary to GitHub Release
+      - name: Upload Binaries to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/slack2tchap-linux-amd64
+          files: |
+            dist/slack2tchap-linux-amd64
+            dist/slack2tchap-stateless-linux-amd64
+            dist/slack2tchap-core-linux-amd64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

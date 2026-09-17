@@ -57,7 +57,7 @@ Puisque Scalingo fournit un addon **PostgreSQL persistant**, `slack2tchap` trans
 
 ## 3. Implémentation Détaillée
 
-### A. Restauration au Démarrage ([`MatrixClientManager`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/infrastructure/matrix/manager.py))
+### A. Restauration au Démarrage ([`MatrixClientManager`](../slack2tchap/src/slack2tchap/infrastructure/matrix/manager.py))
 Lorsqu'un bot Matrix est sollicité :
 1. Le gestionnaire vérifie s'il existe une archive dans `matrix_accounts.crypto_store_blob`.
 2. Si oui, il décompresse l'archive `tar.gz` directement dans le dossier temporaire `/tmp/matrix_stores/{account_id}/`.
@@ -67,7 +67,7 @@ Lorsqu'un bot Matrix est sollicité :
 ### B. Sauvegarde Sécurisée vers PostgreSQL
 1. Au premier démarrage d'un bot (après négociation des clés initiales) : le dossier `/tmp` est compressé en mémoire et persisté dans `matrix_accounts.crypto_store_blob`.
 2. Lors de l'arrêt gracieux du conteneur (signal `SIGTERM` envoyé par Scalingo lors d'un restart ou redéploiement) :
-   - Le cycle de vie FastAPI [`lifespan`](file:///Users/nsagon/Projects/beta/tchap-webhook-gateway/src/slack2tchap/main.py#L65) intercepte l'arrêt.
+   - Le cycle de vie FastAPI [`lifespan`](../slack2tchap/src/slack2tchap/main.py#L23-L78) intercepte l'arrêt.
    - Il compresse le store de chaque bot actif et met à jour PostgreSQL avant de libérer les connexions.
 
 ---

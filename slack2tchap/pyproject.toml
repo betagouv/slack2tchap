@@ -1,6 +1,6 @@
 [project]
 name = "slack2tchap"
-version = "0.1.0"
+version = "1.0.0"
 description = "Passerelle webhook multi-bot Slack vers Matrix / Tchap avec E2EE, persistance DB et gestion utilisateur"
 readme = "README.md"
 requires-python = ">=3.12"
