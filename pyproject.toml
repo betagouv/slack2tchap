@@ -1,21 +1,23 @@
 [project]
-name = "slack2tchap"
+name = "slack2tchap-workspace"
 version = "0.1.0"
-description = "Passerelle webhook Slack/Mattermost vers Matrix/Tchap avec support E2EE"
-readme = "README.md"
-requires-python = ">=3.12"
+description = "Monorepo workspace pour slack2tchap, slack2tchap-stateless et slack2tchap-core"
 dependencies = [
-    "aiosqlite>=0.22.1",
-    "alembic>=1.13.0",
-    "asyncpg>=0.29.0",
-    "cryptography>=43.0.0",
-    "fastapi>=0.141.1",
-    "markdown>=3.10.3",
-    "matrix-nio[e2e]>=0.26.0",
-    "pydantic>=2.0",
-    "pydantic-settings>=2.15.0",
-    "sqlalchemy[asyncio]>=2.0.0",
-    "uvicorn>=0.53.0",
+    "slack2tchap-core",
+    "slack2tchap-stateless",
+    "slack2tchap",
+]
+
+[tool.uv.sources]
+slack2tchap-core = { workspace = true }
+slack2tchap-stateless = { workspace = true }
+slack2tchap = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "slack2tchap-core",
+    "slack2tchap-stateless",
+    "slack2tchap",
 ]
 
 [dependency-groups]
@@ -29,37 +31,43 @@ dev = [
     "ruff>=0.16.7",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = [
+    "slack2tchap-core/src",
+    "slack2tchap-stateless/src",
+    "slack2tchap/src",
+    "slack2tchap-core/tests",
+    "slack2tchap-stateless/tests",
+    "slack2tchap/tests",
+]
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "UP",     # pyupgrade
-    "ARG001", # unused-arguments
-    "ASYNC",  # flake8-async
-    "T20",    # flake8-print
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "UP",
+    "ARG001",
+    "ASYNC",
+    "T20",
 ]
 ignore = [
-    "E501",   # line length (handled by formatter)
+    "E501",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["T201"]
+"slack2tchap-core/src/slack2tchap_core/cli.py" = ["T201"]
+"slack2tchap-stateless/scripts/*" = ["T201"]
+"slack2tchap/scripts/*" = ["T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["slack2tchap"]
+known-first-party = ["slack2tchap_core", "slack2tchap_stateless", "slack2tchap"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -67,8 +75,18 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-pythonpath = ["src"]
+testpaths = [
+    "slack2tchap-core/tests",
+    "slack2tchap-stateless/tests",
+    "slack2tchap/tests",
+]
+pythonpath = [
+    "slack2tchap-core/src",
+    "slack2tchap-stateless/src",
+    "slack2tchap/src",
+    "slack2tchap/tests",
+    "slack2tchap-stateless/tests",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

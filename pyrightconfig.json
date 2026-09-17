@@ -1,6 +1,17 @@
 {
-  "include": ["src", "tests"],
-  "extraPaths": ["src"],
+  "include": [
+    "slack2tchap-core/src",
+    "slack2tchap-core/tests",
+    "slack2tchap-stateless/src",
+    "slack2tchap-stateless/tests",
+    "slack2tchap/src",
+    "slack2tchap/tests"
+  ],
+  "extraPaths": [
+    "slack2tchap-core/src",
+    "slack2tchap-stateless/src",
+    "slack2tchap/src"
+  ],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",

@@ -3,6 +3,9 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/slack2tchap.iml" filepath="$PROJECT_DIR$/.idea/slack2tchap.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/slack2tchap-core.iml" filepath="$PROJECT_DIR$/.idea/slack2tchap-core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/slack2tchap-stateless.iml" filepath="$PROJECT_DIR$/.idea/slack2tchap-stateless.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/slack2tchap-workspace.iml" filepath="$PROJECT_DIR$/.idea/slack2tchap-workspace.iml" />
     </modules>
   </component>
 </project>

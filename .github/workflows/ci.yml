@@ -1,40 +1,113 @@
-name: CI
+name: CI & Binaries Release
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "feat/**"]
   pull_request:
-    branches: ["main", "master"]
+    branches: ["main"]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ENVIRONMENT: development
+  SECRET_ENCRYPTION_KEY: "ci-secret-encryption-key-for-tests-32b!"
 
 jobs:
-  lint-and-test:
-    name: Quality Checks & Test Suite
+  quality-and-tests:
+    name: Code Quality & Tests (3 projects)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install system dependencies (libolm for matrix-nio E2EE)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libolm-dev libolm3
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
           version: "latest"
+          enable-cache: true
 
       - name: Set up Python 3.12
         run: uv python install 3.12
 
-      - name: Install dependencies
-        run: uv sync --dev
+      - name: Install workspace dependencies
+        run: uv sync
 
-      - name: Check code formatting (ruff format)
+      - name: Format Check (ruff format)
         run: uv run ruff format --check .
 
-      - name: Lint code (ruff check)
+      - name: Lint Check (ruff check)
         run: uv run ruff check .
 
-      - name: Type check (pyright)
+      - name: Type Check (pyright)
         run: uv run pyright
 
-      - name: Run test suite (pytest)
-        run: uv run pytest
+      - name: Run Test Suite (slack2tchap-core, slack2tchap-stateless, slack2tchap)
+        run: uv run pytest --cov=slack2tchap_core --cov=slack2tchap_stateless --cov=slack2tchap --cov-report=term-missing
+
+  build-binaries:
+    name: Build Standalone Binaries (PyInstaller)
+    needs: quality-and-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (libolm for matrix-nio E2EE)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libolm-dev libolm3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install workspace dependencies
+        run: uv sync
+
+      - name: Build slack2tchap-core binary
+        run: |
+          uv run pyinstaller --clean --noconfirm --onefile \
+            --name slack2tchap-core \
+            slack2tchap-core/src/slack2tchap_core/cli.py
+
+      - name: Build slack2tchap-stateless binary
+        run: |
+          uv run pyinstaller --clean --noconfirm --onefile \
+            --name slack2tchap-stateless \
+            slack2tchap-stateless/src/slack2tchap_stateless/main.py
+
+      - name: Build slack2tchap (stateful) binary
+        run: |
+          uv run pyinstaller --clean --noconfirm --onefile \
+            --name slack2tchap \
+            slack2tchap/src/slack2tchap/main.py
+
+      - name: Verify compiled binaries
+        run: |
+          chmod +x dist/*
+          ./dist/slack2tchap-core --version
+          ./dist/slack2tchap-stateless --help || true
+          ./dist/slack2tchap --help || true
+
+      - name: Upload Binaries Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: slack2tchap-binaries-linux-x86_64
+          path: dist/
+          retention-days: 14

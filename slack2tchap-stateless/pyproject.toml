@@ -1,0 +1,25 @@
+[project]
+name = "slack2tchap-stateless"
+version = "0.1.0"
+description = "Micro-service webhook 100% Stateless Slack vers Matrix/Tchap sans base de données"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "slack2tchap-core",
+    "certifi>=2024.0.0",
+    "fastapi>=0.141.1",
+    "matrix-nio>=0.26.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.15.0",
+    "uvicorn>=0.53.0",
+]
+
+[project.scripts]
+slack2tchap-stateless = "slack2tchap_stateless.main:run"
+
+[tool.uv.sources]
+slack2tchap-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,17 @@
+[project]
+name = "slack2tchap-core"
+version = "0.1.0"
+description = "Bibliothèque commune (domain, crypto, parsers, ports) pour slack2tchap"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=43.0.0",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+slack2tchap-core = "slack2tchap_core.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
