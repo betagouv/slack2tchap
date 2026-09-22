@@ -90,6 +90,22 @@ def test_parse_fallback_when_no_text_in_attachment() -> None:
     assert alert.attachments[0].text == "Backup failed"
 
 
+def test_parse_attachments_with_pretext() -> None:
+    payload = {
+        "attachments": [
+            {
+                "pretext": ":warning: *High Error Rate*",
+                "text": "Details here",
+                "color": "warning",
+            }
+        ]
+    }
+    alert = SlackPayloadParser.parse(payload)
+    assert len(alert.attachments) == 1
+    assert alert.attachments[0].pretext == ":warning: *High Error Rate*"
+    assert alert.attachments[0].text == "Details here"
+
+
 def test_clean_slack_text_redos_safety() -> None:
     # Strings matching CodeQL ReDoS warnings:
     # 1. Starting with '<' and many repetitions of '<='

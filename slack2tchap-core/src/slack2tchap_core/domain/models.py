@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+import markdown
+
 
 class AlertSeverity(StrEnum):
     """Normalized severity level for an alert."""
@@ -65,6 +67,7 @@ class AlertAttachment:
 
     title: str | None = None
     title_link: str | None = None
+    pretext: str | None = None
     text: str | None = None
     color: str | None = None
     fields: list[AlertField] = field(default_factory=list)
@@ -108,16 +111,41 @@ class AlertMessage:
             case AlertSeverity.INFO:
                 return "#439fe0"
 
+    @classmethod
+    def resolve_color_hex(cls, color: str | None, default_hex: str) -> str:
+        """Resolve a Slack color string or keyword into a valid CSS hex color."""
+        if not color:
+            return default_hex
+        cleaned = color.strip()
+        if cleaned.startswith("#") and len(cleaned) in (4, 7):
+            return cleaned
+        sev = AlertSeverity.from_slack_color(cleaned)
+        match sev:
+            case AlertSeverity.SUCCESS:
+                return "#2eb886"
+            case AlertSeverity.WARNING:
+                return "#daa038"
+            case AlertSeverity.DANGER | AlertSeverity.CRITICAL:
+                return "#de4343"
+            case AlertSeverity.INFO:
+                return default_hex
+
     def to_plain_text(self) -> str:
         """Render pure plain text message for fallback clients."""
         parts: list[str] = []
-        if self.text:
-            parts.append(f"{self._severity_badge()} {self.text}")
-        elif self.attachments:
-            parts.append(self._severity_badge())
+        if self.severity != AlertSeverity.INFO:
+            badge = self._severity_badge()
+            if self.text:
+                parts.append(f"{badge} {self.text}")
+            elif self.attachments:
+                parts.append(badge)
+        elif self.text:
+            parts.append(self.text)
 
         for att in self.attachments:
             att_lines: list[str] = []
+            if att.pretext:
+                att_lines.append(att.pretext)
             if att.author_name:
                 att_lines.append(f"Author: {att.author_name}")
             if att.title:
@@ -145,12 +173,20 @@ class AlertMessage:
         header_html = f'<font color="{color_hex}"><strong>{badge_text}</strong></font>'
 
         if self.text:
-            escaped_text = html.escape(self.text).replace("\n", "<br />")
-            parts.append(f"<p>{header_html} {escaped_text}</p>")
-        else:
+            converted_text = markdown.markdown(self.text, extensions=["tables"]).strip()
+            # Only prepend alert badge if severity is not standard INFO
+            if self.severity != AlertSeverity.INFO:
+                parts.append(f"<p>{header_html} {converted_text}</p>")
+            else:
+                parts.append(converted_text)
+        elif not self.attachments and self.severity != AlertSeverity.INFO:
             parts.append(f"<p>{header_html}</p>")
 
         for att in self.attachments:
+            if att.pretext:
+                pretext_html = markdown.markdown(att.pretext, extensions=["tables"]).strip()
+                parts.append(pretext_html)
+
             att_parts: list[str] = []
             if att.author_name:
                 att_parts.append(f"<small>{html.escape(att.author_name)}</small>")
@@ -164,8 +200,8 @@ class AlertMessage:
                     att_parts.append(f"<h4>{escaped_title}</h4>")
 
             if att.text:
-                escaped_att_text = html.escape(att.text).replace("\n", "<br />")
-                att_parts.append(f"<p>{escaped_att_text}</p>")
+                text_html = markdown.markdown(att.text, extensions=["tables"]).strip()
+                att_parts.append(text_html)
 
             if att.fields:
                 table_rows: list[str] = []
@@ -182,8 +218,7 @@ class AlertMessage:
 
             if att_parts:
                 att_html = "".join(att_parts)
-                # Render attachment as a blockquote with a colored border
-                border_color = html.escape(att.color) if att.color else color_hex
+                border_color = self.resolve_color_hex(att.color, color_hex)
                 parts.append(
                     f'<blockquote style="border-left: 4px solid {border_color}; margin: 8px 0; padding-left: 8px;">'
                     f"{att_html}"
