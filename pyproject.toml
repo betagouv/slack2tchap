@@ -1,6 +1,6 @@
 [project]
 name = "slack2tchap-workspace"
-version = "1.0.0"
+version = "1.0.1"
 description = "Monorepo workspace pour slack2tchap, slack2tchap-stateless et slack2tchap-core"
 dependencies = [
     "slack2tchap-core",

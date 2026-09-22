@@ -1,6 +1,6 @@
 [project]
 name = "slack2tchap-stateless"
-version = "1.0.0"
+version = "1.0.1"
 description = "Micro-service webhook 100% Stateless Slack vers Matrix/Tchap sans base de données"
 readme = "README.md"
 requires-python = ">=3.12"
