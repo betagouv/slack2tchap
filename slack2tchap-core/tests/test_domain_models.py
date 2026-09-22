@@ -69,3 +69,29 @@ def test_alert_message_rendering() -> None:
     assert '<a href="https://status.example.gouv.fr">API Gateway</a>' in html_out
     assert "<td><strong>Environment</strong></td><td>Production</td>" in html_out
     assert "Alertmanager v0.26" in html_out
+
+
+def test_alert_message_markdown_table_and_pretext() -> None:
+    table_md = "| URI | Method | Errors |\n| :--- | :--- | :--- |\n| `/api/test` | GET | 42 |"
+    alert = AlertMessage(
+        severity=AlertSeverity.WARNING,
+        attachments=[
+            AlertAttachment(
+                pretext="⚠️ *High error rate detected*",
+                text=f"**Environment**: `prod`\n\n{table_md}",
+                color="warning",
+            )
+        ],
+    )
+
+    plain = alert.to_plain_text()
+    assert "High error rate detected" in plain
+    assert "`/api/test`" in plain
+
+    html_out = alert.to_matrix_html()
+    assert "High error rate detected" in html_out
+    assert "<strong>Environment</strong>" in html_out
+    assert "<code>prod</code>" in html_out
+    assert "<table>" in html_out
+    assert "<th" in html_out
+    assert "border-left: 4px solid #daa038;" in html_out

@@ -118,6 +118,9 @@ class SlackPayloadParser:
                 if severity != AlertSeverity.INFO:
                     highest_severity = severity
 
+                pretext = cls.clean_slack_text(
+                    str(item.get("pretext")) if item.get("pretext") is not None else None
+                )
                 title = str(item.get("title")).strip() if item.get("title") else None
                 title_link = str(item.get("title_link")).strip() if item.get("title_link") else None
 
@@ -160,6 +163,7 @@ class SlackPayloadParser:
                     AlertAttachment(
                         title=title,
                         title_link=title_link,
+                        pretext=pretext if pretext else None,
                         text=att_text if att_text else None,
                         color=color,
                         fields=fields,
