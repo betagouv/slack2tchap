@@ -95,3 +95,22 @@ def test_alert_message_markdown_table_and_pretext() -> None:
     assert "<table>" in html_out
     assert "<th" in html_out
     assert "border-left: 4px solid #daa038;" in html_out
+
+
+def test_alert_attachment_title_markdown() -> None:
+    alert = AlertMessage(
+        severity=AlertSeverity.DANGER,
+        attachments=[
+            AlertAttachment(
+                title="🚨 **ALERTE PROD** : Incident sur `task-scheduler`",
+                title_link="https://kibana.example.gouv.fr",
+                color="danger",
+            )
+        ],
+    )
+
+    html_out = alert.to_matrix_html()
+    assert "<strong>ALERTE PROD</strong>" in html_out
+    assert "<code>task-scheduler</code>" in html_out
+    assert '<a href="https://kibana.example.gouv.fr">' in html_out
+    assert "**ALERTE PROD**" not in html_out

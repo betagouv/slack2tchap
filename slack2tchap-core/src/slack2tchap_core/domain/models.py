@@ -192,12 +192,17 @@ class AlertMessage:
                 att_parts.append(f"<small>{html.escape(att.author_name)}</small>")
 
             if att.title:
-                escaped_title = html.escape(att.title)
+                # Parse markdown inside title so formatting like **bold** works
+                title_html = markdown.markdown(att.title).strip()
+                # Remove surrounding <p>...</p> created by markdown parser for inline title
+                if title_html.startswith("<p>") and title_html.endswith("</p>"):
+                    title_html = title_html[3:-4]
+
                 if att.title_link:
                     escaped_link = html.escape(att.title_link, quote=True)
-                    att_parts.append(f'<h4><a href="{escaped_link}">{escaped_title}</a></h4>')
+                    att_parts.append(f'<h4><a href="{escaped_link}">{title_html}</a></h4>')
                 else:
-                    att_parts.append(f"<h4>{escaped_title}</h4>")
+                    att_parts.append(f"<h4>{title_html}</h4>")
 
             if att.text:
                 text_html = markdown.markdown(att.text, extensions=["tables"]).strip()
